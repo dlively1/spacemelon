@@ -33,6 +33,10 @@ export class Watermelon extends Phaser.Physics.Arcade.Sprite {
   private pathPattern: PathPattern;
   private waveAmplitude: number;
   private pathPhase: number;
+  // Melons spawn just outside the play area and "drift in." They can't be
+  // killed until their sprite touches the visible area, so the player never
+  // gets credit for off-screen blasts.
+  private vulnerable = false;
 
   constructor(scene: Phaser.Scene, x: number, y: number, opts: WatermelonOpts) {
     super(scene, x, y, TEX.watermelonSlice, 0);
@@ -64,6 +68,21 @@ export class Watermelon extends Phaser.Physics.Arcade.Sprite {
     this.pathPhase = Math.random() * Math.PI * 2;
 
     if (this.mega) this.setDepth(50); // draw mega above small melons
+  }
+
+  /** True once any part of the sprite has touched the visible play area. */
+  isVulnerable(): boolean {
+    if (this.vulnerable) return true;
+    const halfW = this.displayWidth / 2;
+    const halfH = this.displayHeight / 2;
+    const { width, height } = this.scene.scale;
+    const touchingScreen =
+      this.x + halfW > 0 &&
+      this.x - halfW < width &&
+      this.y + halfH > 0 &&
+      this.y - halfH < height;
+    if (touchingScreen) this.vulnerable = true;
+    return this.vulnerable;
   }
 
   /** Apply one bullet of damage. Returns true if this hit destroyed the melon. */

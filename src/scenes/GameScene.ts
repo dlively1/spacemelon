@@ -92,12 +92,19 @@ export class GameScene extends Phaser.Scene {
     });
     this.melons = this.physics.add.group({ classType: Watermelon, runChildUpdate: true });
 
-    this.physics.add.overlap(this.bullets, this.melons, (b, m) =>
-      this.onBulletHitMelon(b as Phaser.Physics.Arcade.Sprite, m as Watermelon)
-    );
-    this.physics.add.overlap(this.ship, this.melons, (_s, m) =>
-      this.onShipHitMelon(m as Watermelon)
-    );
+    this.physics.add.overlap(this.bullets, this.melons, (b, m) => {
+      const melon = m as Watermelon;
+      // Skip kills that would happen while the melon is still off-screen —
+      // otherwise players "shoot into the void" to score on melons they
+      // never saw, which feels broken.
+      if (!melon.isVulnerable()) return;
+      this.onBulletHitMelon(b as Phaser.Physics.Arcade.Sprite, melon);
+    });
+    this.physics.add.overlap(this.ship, this.melons, (_s, m) => {
+      const melon = m as Watermelon;
+      if (!melon.isVulnerable()) return;
+      this.onShipHitMelon(melon);
+    });
 
     this.cursors = this.input.keyboard!.createCursorKeys();
     this.keyA = this.input.keyboard!.addKey("A");
@@ -176,7 +183,9 @@ export class GameScene extends Phaser.Scene {
     const { width, height } = this.scale;
 
     // Pick a spawn edge: top by default; at higher levels, occasionally
-    // from a side edge for flanking pressure.
+    // from a side edge for flanking pressure. Spawn just outside the play
+    // area so melons drift into view quickly — the vulnerability gate in
+    // Watermelon makes sure they can't be killed until they're on-screen.
     const side = this.rng.next() < this.tuning.sideSpawnChance
       ? this.rng.pick(["left", "right"] as const)
       : "top";
@@ -184,12 +193,12 @@ export class GameScene extends Phaser.Scene {
     let y: number;
     if (side === "top") {
       x = this.rng.range(40, width - 40);
-      y = -30;
+      y = -12;
     } else if (side === "left") {
-      x = -30;
+      x = -16;
       y = this.rng.range(60, height * 0.6);
     } else {
-      x = width + 30;
+      x = width + 16;
       y = this.rng.range(60, height * 0.6);
     }
 
@@ -203,7 +212,10 @@ export class GameScene extends Phaser.Scene {
     while (this.megaCueIdx < cues.length && this.killedThisLevel >= cues[this.megaCueIdx].atKill) {
       const { width } = this.scale;
       const x = this.rng.range(width * 0.3, width * 0.7);
-      const y = -60;
+      // Just above the screen — at scale 4 the sprite is ~112px so it peeks
+      // in immediately; vulnerability gate still keeps it un-killable until
+      // it's actually visible.
+      const y = -30;
       this.melons.add(this.makeMelon(x, y, { mega: true }));
       this.megaCueIdx++;
     }
@@ -290,7 +302,12 @@ export class GameScene extends Phaser.Scene {
     this.melons.children.iterate((obj) => {
       const m = obj as Watermelon;
       if (!m.active) return true;
-      if (m.y > this.scale.height + 40) m.destroy();
+      // Off the bottom: drifted past the ship. Off the sides: only kill if
+      // they've already been on-screen (vulnerable) so freshly-spawned side
+      // melons get their drift-in window.
+      const offBottom = m.y > this.scale.height + 40;
+      const offSide = m.isVulnerable() && (m.x < -60 || m.x > this.scale.width + 60);
+      if (offBottom || offSide) m.destroy();
       return true;
     });
 
