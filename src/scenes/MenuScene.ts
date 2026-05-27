@@ -3,6 +3,7 @@ import { getEventBus } from "../agent/events";
 import { Rng } from "../agent/rng";
 import { buildBackground, worldForLevel } from "../worlds/worlds";
 import { readAgentConfig } from "../agent/config";
+import { loadBestScore } from "../agent/highscore";
 
 export class MenuScene extends Phaser.Scene {
   constructor() {
@@ -11,8 +12,9 @@ export class MenuScene extends Phaser.Scene {
 
   create(): void {
     const bus = getEventBus();
+    const best = loadBestScore();
     bus.emit({ type: "scene", t: this.time.now, name: "menu" });
-    bus.updateSnapshot({ scene: "menu" });
+    bus.updateSnapshot({ scene: "menu", bestScore: best });
 
     const cfg = readAgentConfig();
     const world = worldForLevel(cfg.startLevel);
@@ -36,6 +38,16 @@ export class MenuScene extends Phaser.Scene {
         color: "#ff7bd1",
       })
       .setOrigin(0.5);
+
+    if (best > 0) {
+      this.add
+        .text(width / 2, height / 2 + 8, `BEST  ${best.toString().padStart(6, "0")}`, {
+          fontFamily: "Courier New, monospace",
+          fontSize: "13px",
+          color: "#b8eaff",
+        })
+        .setOrigin(0.5);
+    }
     const prompt = this.add
       .text(width / 2, height / 2 + 60, "PRESS  SPACE  TO  START", {
         fontFamily: "Courier New, monospace",

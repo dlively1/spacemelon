@@ -57,6 +57,25 @@ export async function waitForEvent<T extends GameEvent["type"]>(
   return (await handle.jsonValue()) as Extract<GameEvent, { type: T }>;
 }
 
+// Wait for an event that occurred strictly after `sinceT` (ms since boot).
+// Useful when looking for a fresh occurrence after a restart or scene change.
+export async function waitForEventAfter<T extends GameEvent["type"]>(
+  page: Page,
+  type: T,
+  sinceT: number,
+  timeoutMs = 15_000
+): Promise<Extract<GameEvent, { type: T }>> {
+  const handle = await page.waitForFunction(
+    ({ t, since }) => {
+      const ev = window.__SPACEMELON?.events.find((e) => e.type === t && e.t > since);
+      return ev ?? null;
+    },
+    { t: type, since: sinceT },
+    { timeout: timeoutMs }
+  );
+  return (await handle.jsonValue()) as Extract<GameEvent, { type: T }>;
+}
+
 export async function hold(
   page: Page,
   control: "left" | "right" | "fire",

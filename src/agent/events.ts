@@ -10,7 +10,8 @@ export type GameEvent =
   | { type: "hit"; t: number; targetId: number; kind: "watermelon" }
   | { type: "score"; t: number; score: number }
   | { type: "lives"; t: number; lives: number }
-  | { type: "game-over"; t: number; score: number; level: number }
+  | { type: "game-over"; t: number; score: number; level: number; killedTotal: number; newBest: boolean; bestScore: number }
+  | { type: "restart"; t: number }
   | { type: "frame"; t: number; fps: number; entities: number };
 
 export interface GameSnapshot {
@@ -20,6 +21,7 @@ export interface GameSnapshot {
   world: string;
   score: number;
   lives: number;
+  bestScore: number;
   fps: number;
   entities: number;
   seed: number;
@@ -69,6 +71,7 @@ class EventBus {
         world: "",
         score: 0,
         lives: 0,
+        bestScore: 0,
         fps: 0,
         entities: 0,
         seed,

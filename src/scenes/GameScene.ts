@@ -6,9 +6,12 @@ import { Rng } from "../agent/rng";
 import { readAgentConfig, type AgentConfig } from "../agent/config";
 import { getEventBus } from "../agent/events";
 import { DebugHud } from "../agent/hud";
+import { GameHud } from "../ui/GameHud";
+import { loadBestScore, saveBestScore } from "../agent/highscore";
 import { buildBackground, worldForLevel, type WorldDef } from "../worlds/worlds";
 
 const WATERMELONS_TO_CLEAR = 12;
+const STARTING_LIVES = 3;
 
 export class GameScene extends Phaser.Scene {
   private ship!: Ship;
@@ -25,31 +28,48 @@ export class GameScene extends Phaser.Scene {
   private rng!: Rng;
   private cfg!: AgentConfig;
   private hud!: DebugHud;
+  private gameHud!: GameHud;
   private level = 1;
   private world!: WorldDef;
   private score = 0;
-  private lives = 3;
+  private lives = STARTING_LIVES;
   private spawnedThisLevel = 0;
   private killedThisLevel = 0;
+  private killedTotal = 0;
+  private gameOverActive = false;
   private stars: Phaser.GameObjects.Image[] = [];
   private bgContainer!: Phaser.GameObjects.Container;
   private input$ = { left: false, right: false, up: false, down: false, fire: false };
+
+  private initStartLevel?: number;
 
   constructor() {
     super("game");
   }
 
+  init(data?: { startLevel?: number }): void {
+    this.initStartLevel = data?.startLevel;
+  }
+
   create(): void {
     this.cfg = readAgentConfig();
-    this.level = Math.max(1, this.cfg.startLevel);
+    this.level = Math.max(1, this.initStartLevel ?? this.cfg.startLevel);
     this.rng = new Rng(this.cfg.seed ^ (this.level * 0x9e3779b1));
     this.world = worldForLevel(this.level);
     this.score = 0;
-    this.lives = 3;
+    this.lives = STARTING_LIVES;
+    this.killedTotal = 0;
+    this.gameOverActive = false;
 
     const bus = getEventBus();
     bus.emit({ type: "scene", t: this.time.now, name: "game" });
-    bus.updateSnapshot({ scene: "game", paused: false });
+    bus.updateSnapshot({
+      scene: "game",
+      paused: false,
+      score: 0,
+      lives: STARTING_LIVES,
+      bestScore: loadBestScore(),
+    });
 
     const bg = buildBackground(this, this.world, this.rng);
     this.bgContainer = bg.container;
@@ -81,6 +101,7 @@ export class GameScene extends Phaser.Scene {
     this.pauseKey = this.input.keyboard!.addKey("P");
     this.pauseKey.on("down", () => this.togglePause());
 
+    this.gameHud = new GameHud(this, { lives: this.lives, score: this.score });
     this.hud = new DebugHud(this);
     this.hud.setVisible(this.cfg.debug);
 
@@ -246,25 +267,30 @@ export class GameScene extends Phaser.Scene {
 
   private onBulletHitMelon(bullet: Phaser.Physics.Arcade.Sprite, melon: Watermelon): void {
     bullet.disableBody(true, true);
+    const award = 100;
     const bus = getEventBus();
     bus.emit({ type: "hit", t: this.time.now, targetId: melon.meloId, kind: "watermelon" });
-    this.score += 100;
+    this.score += award;
     this.killedThisLevel++;
+    this.killedTotal++;
     bus.emit({ type: "score", t: this.time.now, score: this.score });
     bus.updateSnapshot({ score: this.score });
+    this.gameHud.setScore(this.score);
+    this.gameHud.popScore(melon.x, melon.y, award);
     this.spawnExplosion(melon.x, melon.y);
     melon.destroy();
     if (this.killedThisLevel >= WATERMELONS_TO_CLEAR) this.advanceLevel();
   }
 
   private onShipHitMelon(melon: Watermelon): void {
-    if (this.cfg.invincible) return;
+    if (this.cfg.invincible || this.gameOverActive) return;
     this.spawnExplosion(melon.x, melon.y);
     melon.destroy();
     this.lives -= 1;
     const bus = getEventBus();
     bus.emit({ type: "lives", t: this.time.now, lives: this.lives });
     bus.updateSnapshot({ lives: this.lives });
+    this.gameHud.setLives(this.lives);
     this.cameras.main.shake(180, 0.01);
     if (this.lives <= 0) this.gameOver();
   }
@@ -335,23 +361,126 @@ export class GameScene extends Phaser.Scene {
   }
 
   private gameOver(): void {
+    if (this.gameOverActive) return;
+    this.gameOverActive = true;
+
+    const prevBest = loadBestScore();
+    const newBest = saveBestScore(this.score);
+    const bestScore = Math.max(prevBest, this.score);
+
     const bus = getEventBus();
-    bus.emit({ type: "game-over", t: this.time.now, score: this.score, level: this.level });
-    bus.updateSnapshot({ scene: "gameover" });
-    const { width, height } = this.scale;
-    this.add
-      .text(width / 2, height / 2, `GAME OVER\nscore ${this.score}`, {
-        fontFamily: "Courier New, monospace",
-        fontSize: "32px",
-        align: "center",
-        color: "#ff7bd1",
-        stroke: "#150033",
-        strokeThickness: 3,
-      })
-      .setOrigin(0.5)
-      .setDepth(5000);
+    bus.emit({
+      type: "game-over",
+      t: this.time.now,
+      score: this.score,
+      level: this.level,
+      killedTotal: this.killedTotal,
+      newBest,
+      bestScore,
+    });
+    bus.updateSnapshot({ scene: "gameover", bestScore });
+
     this.physics.pause();
-    this.input.keyboard?.once("keydown-SPACE", () => this.scene.start("menu"));
+    this.time.removeAllEvents();
+    this.gameHud.setVisible(false);
+
+    const panel = this.buildGameOverPanel({ newBest, bestScore });
+    panel.setAlpha(0);
+    this.tweens.add({ targets: panel, alpha: 1, duration: 250 });
+
+    this.input.keyboard?.once("keydown-SPACE", () => this.restart());
+    this.input.keyboard?.once("keydown-ESC", () => this.scene.start("menu"));
+  }
+
+  private buildGameOverPanel(opts: { newBest: boolean; bestScore: number }): Phaser.GameObjects.Container {
+    const { width, height } = this.scale;
+    const cx = width / 2;
+    const cy = height / 2;
+    const container = this.add.container(cx, cy).setDepth(5000).setScrollFactor(0);
+
+    const W = 280;
+    const H = 240;
+    const bg = this.add
+      .rectangle(0, 0, W, H, 0x05030a, 0.85)
+      .setStrokeStyle(2, 0x9b3aff, 1);
+    container.add(bg);
+
+    const fmt = (n: number) => n.toString().padStart(6, "0");
+    const label = (s: string) => s.padEnd(12, " ");
+    const lines: Array<{ text: string; y: number; size: number; color: string; stroke?: string }> = [
+      { text: "GAME OVER", y: -98, size: 28, color: "#ff7bd1", stroke: "#150033" },
+      { text: "─────────────────", y: -64, size: 12, color: "#9b3aff" },
+      { text: `${label("SCORE")}${fmt(this.score)}`, y: -38, size: 14, color: "#fff0a8" },
+      { text: `${label("LEVEL")}${this.level.toString().padStart(6, " ")}`, y: -18, size: 14, color: "#b8eaff" },
+      { text: `${label("MELONS")}${this.killedTotal.toString().padStart(6, " ")}`, y: 2, size: 14, color: "#77d76d" },
+      { text: "─────────────────", y: 24, size: 12, color: "#9b3aff" },
+    ];
+    for (const l of lines) {
+      const t = this.add
+        .text(0, l.y, l.text, {
+          fontFamily: "Courier New, monospace",
+          fontSize: `${l.size}px`,
+          color: l.color,
+          ...(l.stroke ? { stroke: l.stroke, strokeThickness: 3 } : {}),
+        })
+        .setOrigin(0.5);
+      container.add(t);
+    }
+
+    if (opts.newBest) {
+      const badge = this.add
+        .text(0, 50, "★  NEW BEST  ★", {
+          fontFamily: "Courier New, monospace",
+          fontSize: "16px",
+          color: "#fff0a8",
+          stroke: "#ff9d3a",
+          strokeThickness: 3,
+        })
+        .setOrigin(0.5);
+      container.add(badge);
+      this.tweens.add({
+        targets: badge,
+        scale: { from: 1, to: 1.1 },
+        duration: 600,
+        yoyo: true,
+        repeat: -1,
+        ease: "Sine.easeInOut",
+      });
+    } else {
+      const best = this.add
+        .text(0, 50, `${label("BEST")}${fmt(opts.bestScore)}`, {
+          fontFamily: "Courier New, monospace",
+          fontSize: "14px",
+          color: "#b8eaff",
+        })
+        .setOrigin(0.5);
+      container.add(best);
+    }
+
+    const hint = this.add
+      .text(0, 96, "SPACE  RESTART      ESC  MENU", {
+        fontFamily: "Courier New, monospace",
+        fontSize: "11px",
+        color: "#6ac3ff",
+      })
+      .setOrigin(0.5);
+    container.add(hint);
+    this.tweens.add({
+      targets: hint,
+      alpha: { from: 1, to: 0.35 },
+      duration: 700,
+      yoyo: true,
+      repeat: -1,
+    });
+
+    return container;
+  }
+
+  private restart(): void {
+    const bus = getEventBus();
+    bus.emit({ type: "restart", t: this.time.now });
+    // Always restart from level 1, regardless of URL startLevel.
+    this.scene.restart({ startLevel: 1 });
   }
 
   private togglePause(): void {
