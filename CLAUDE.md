@@ -41,9 +41,13 @@ src/
     sprites.ts            Procedural ship / bullet / watermelon / star / fx textures
   worlds/
     worlds.ts             WorldDef registry + buildBackground(scene, world, rng)
+  levels/
+    levels.ts             LevelTuning registry (spawn rate, speed, megas) + tuningForLevel
+  ui/
+    GameHud.ts            Always-on lives + score overlay (separate from agent/hud.ts dev HUD)
   entities/
     Ship.ts               Player ship (Arcade Sprite)
-    Watermelon.ts         Spinning watermelon enemy
+    Watermelon.ts         Spinning watermelon enemy (small or mega, with HP + path patterns)
   scenes/
     BootScene.ts          Generate textures, emit `boot`, → menu
     MenuScene.ts          Title screen; SPACE/ENTER → game (or autoplay)
@@ -123,6 +127,10 @@ Prefer these helpers — they keep tests readable and centralize bridge churn.
 - **Worlds are data.** Add a level/world by appending a `WorldDef` to `WORLDS`
   in `src/worlds/worlds.ts`. `worldForLevel(level)` wraps modulo so the loop
   always has art.
+- **Difficulty is data.** Per-level tuning (spawn rate, melon speed, spread,
+  side-spawn chance, mega schedule, HP) lives in `src/levels/levels.ts`.
+  `tuningForLevel(level)` returns explicit entries for L1–L5 and extrapolates
+  beyond. Tweak feel here — `GameScene` reads it on `startLevel()`.
 - **Tests should boot fresh per scenario.** `bootGame(page, opts)` re-navigates
   with new URL params, which is the supported way to get a clean RNG.
 
@@ -145,6 +153,10 @@ When iterating on gameplay or visuals:
   `entities/`, spawn in `GameScene`, emit a `spawn` variant with a new `kind`.
 - **New world:** new `WorldDef` in `worlds/worlds.ts` — palette + optional
   `decorate(scene, rng, layer)` for set-pieces.
+- **Retune difficulty:** edit the `LEVELS` array in `src/levels/levels.ts`.
+  Mega cues are `{ atKill: N }` — when `killedThisLevel` reaches N, a
+  megamelon spawns; megamelons take `megaHp` hits and shatter into 6 small
+  melons on the killing blow.
 - **New input action:** extend the `input` object in `GameBridge` (in
   `agent/events.ts`), bind it in `GameScene.create`, and expose a helper from
   `gameClient.ts`.

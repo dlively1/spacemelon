@@ -9,9 +9,13 @@ import { DebugHud } from "../agent/hud";
 import { GameHud } from "../ui/GameHud";
 import { loadBestScore, saveBestScore } from "../agent/highscore";
 import { buildBackground, worldForLevel, type WorldDef } from "../worlds/worlds";
+import { tuningForLevel, type LevelTuning } from "../levels/levels";
 
-const WATERMELONS_TO_CLEAR = 12;
 const STARTING_LIVES = 3;
+const MEGA_SHATTER_COUNT = 6;
+const SCORE_SMALL_KILL = 100;
+const SCORE_MEGA_HIT = 50;
+const SCORE_MEGA_DESTROY = 500;
 
 export class GameScene extends Phaser.Scene {
   private ship!: Ship;
@@ -31,11 +35,14 @@ export class GameScene extends Phaser.Scene {
   private gameHud!: GameHud;
   private level = 1;
   private world!: WorldDef;
+  private tuning!: LevelTuning;
   private score = 0;
   private lives = STARTING_LIVES;
   private spawnedThisLevel = 0;
   private killedThisLevel = 0;
   private killedTotal = 0;
+  // Megamelon cues consumed by index as kill count advances.
+  private megaCueIdx = 0;
   private gameOverActive = false;
   private stars: Phaser.GameObjects.Image[] = [];
   private bgContainer!: Phaser.GameObjects.Container;
@@ -121,8 +128,10 @@ export class GameScene extends Phaser.Scene {
   private startLevel(level: number): void {
     this.level = level;
     this.world = worldForLevel(level);
+    this.tuning = tuningForLevel(level);
     this.spawnedThisLevel = 0;
     this.killedThisLevel = 0;
+    this.megaCueIdx = 0;
 
     // Rebuild background for the new world.
     this.bgContainer.destroy(true);
@@ -155,30 +164,63 @@ export class GameScene extends Phaser.Scene {
       onComplete: () => banner.destroy(),
     });
 
-    // Spawn cadence scales with level.
-    const baseDelay = Math.max(280, 900 - level * 70);
     this.time.addEvent({
-      delay: baseDelay,
+      delay: this.tuning.spawnDelayMs,
       loop: true,
       callback: () => this.spawnMelon(),
     });
   }
 
   private spawnMelon(): void {
-    if (this.spawnedThisLevel >= WATERMELONS_TO_CLEAR * 2) return;
-    const { width } = this.scale;
-    const x = this.rng.range(40, width - 40);
-    const y = -30;
+    if (this.spawnedThisLevel >= this.tuning.totalSpawnsCap) return;
+    const { width, height } = this.scale;
 
-    // Aim initial velocity roughly at the ship with some spread, so they
-    // actually fly toward the player instead of straight down. Homing in
-    // Watermelon.preUpdate adds gentle in-flight tracking.
+    // Pick a spawn edge: top by default; at higher levels, occasionally
+    // from a side edge for flanking pressure.
+    const side = this.rng.next() < this.tuning.sideSpawnChance
+      ? this.rng.pick(["left", "right"] as const)
+      : "top";
+    let x: number;
+    let y: number;
+    if (side === "top") {
+      x = this.rng.range(40, width - 40);
+      y = -30;
+    } else if (side === "left") {
+      x = -30;
+      y = this.rng.range(60, height * 0.6);
+    } else {
+      x = width + 30;
+      y = this.rng.range(60, height * 0.6);
+    }
+
+    this.melons.add(this.makeMelon(x, y, { mega: false }));
+    this.spawnedThisLevel++;
+  }
+
+  /** Spawn a megamelon at the top center if the schedule says it's time. */
+  private maybeSpawnScheduledMega(): void {
+    const cues = this.tuning.megaSchedule;
+    while (this.megaCueIdx < cues.length && this.killedThisLevel >= cues[this.megaCueIdx].atKill) {
+      const { width } = this.scale;
+      const x = this.rng.range(width * 0.3, width * 0.7);
+      const y = -60;
+      this.melons.add(this.makeMelon(x, y, { mega: true }));
+      this.megaCueIdx++;
+    }
+  }
+
+  /** Build a watermelon (small or mega) aimed at the ship. */
+  private makeMelon(x: number, y: number, opts: { mega: boolean; speedScale?: number }): Watermelon {
+    const t = this.tuning;
     const dx = this.ship.x - x;
-    const dy = Math.max(80, this.ship.y - y);
-    const speed = this.rng.range(120 + this.level * 10, 170 + this.level * 14);
-    const spreadDeg = this.rng.range(-22, 22);
+    const dy = this.ship.y - y;
+    // Use raw dy magnitude (no clamp) so side spawns aim sideways at the
+    // ship instead of being forced downward.
     const baseAngle = Math.atan2(dy, dx);
+    const spreadDeg = this.rng.range(-t.meloSpreadDeg, t.meloSpreadDeg);
     const angle = baseAngle + (spreadDeg * Math.PI) / 180;
+    const speedScale = opts.speedScale ?? (opts.mega ? 0.7 : 1);
+    const speed = this.rng.range(t.meloSpeedMin, t.meloSpeedMax) * speedScale;
     const vx = Math.cos(angle) * speed;
     const vy = Math.sin(angle) * speed;
     const spin = this.rng.range(-2.5, 2.5);
@@ -188,12 +230,22 @@ export class GameScene extends Phaser.Scene {
       vy,
       spin,
       target: this.ship,
-      steerAccel: 35 + this.level * 6,
-      maxSpeed: 220 + this.level * 12,
+      steerAccel: t.meloSteerAccel * (opts.mega ? 0.6 : 1),
+      maxSpeed: t.meloMaxSpeed * (opts.mega ? 0.7 : 1),
+      pathPattern: t.meloPath,
+      mega: opts.mega,
+      hp: opts.mega ? t.megaHp : 1,
     });
-    this.melons.add(m);
-    this.spawnedThisLevel++;
-    getEventBus().emit({ type: "spawn", t: this.time.now, kind: "watermelon", id: m.meloId, x, y });
+    getEventBus().emit({
+      type: "spawn",
+      t: this.time.now,
+      kind: "watermelon",
+      id: m.meloId,
+      x,
+      y,
+      mega: opts.mega,
+    });
+    return m;
   }
 
   update(time: number, delta: number): void {
@@ -267,19 +319,78 @@ export class GameScene extends Phaser.Scene {
 
   private onBulletHitMelon(bullet: Phaser.Physics.Arcade.Sprite, melon: Watermelon): void {
     bullet.disableBody(true, true);
-    const award = 100;
     const bus = getEventBus();
-    bus.emit({ type: "hit", t: this.time.now, targetId: melon.meloId, kind: "watermelon" });
+    const wasMega = melon.mega;
+    const destroyed = melon.takeHit();
+
+    bus.emit({
+      type: "hit",
+      t: this.time.now,
+      targetId: melon.meloId,
+      kind: "watermelon",
+      destroyed,
+      mega: wasMega,
+    });
+
+    let award: number;
+    if (!destroyed) {
+      // Non-killing hit (only possible for megas right now).
+      award = SCORE_MEGA_HIT;
+      this.score += award;
+      this.gameHud.popScore(melon.x, melon.y, award);
+      bus.emit({ type: "score", t: this.time.now, score: this.score });
+      bus.updateSnapshot({ score: this.score });
+      this.gameHud.setScore(this.score);
+      return;
+    }
+
+    // Destroyed this frame.
+    if (wasMega) {
+      award = SCORE_MEGA_DESTROY;
+      this.cameras.main.shake(140, 0.008);
+    } else {
+      award = SCORE_SMALL_KILL;
+      this.killedThisLevel++;
+      this.killedTotal++;
+    }
     this.score += award;
-    this.killedThisLevel++;
-    this.killedTotal++;
     bus.emit({ type: "score", t: this.time.now, score: this.score });
     bus.updateSnapshot({ score: this.score });
     this.gameHud.setScore(this.score);
     this.gameHud.popScore(melon.x, melon.y, award);
-    this.spawnExplosion(melon.x, melon.y);
+    this.spawnExplosion(melon.x, melon.y, wasMega ? 2 : 1);
+    if (wasMega) this.shatterIntoSmallMelons(melon.x, melon.y);
     melon.destroy();
-    if (this.killedThisLevel >= WATERMELONS_TO_CLEAR) this.advanceLevel();
+
+    this.maybeSpawnScheduledMega();
+    if (this.killedThisLevel >= this.tuning.toClear) this.advanceLevel();
+  }
+
+  /** A killed megamelon bursts into a ring of small melons. */
+  private shatterIntoSmallMelons(x: number, y: number): void {
+    for (let i = 0; i < MEGA_SHATTER_COUNT; i++) {
+      const angle = (i / MEGA_SHATTER_COUNT) * Math.PI * 2 + this.rng.range(-0.15, 0.15);
+      const speed = this.rng.range(140, 200);
+      const m = new Watermelon(this, x, y, {
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        spin: this.rng.range(-3, 3),
+        target: this.ship,
+        steerAccel: this.tuning.meloSteerAccel * 0.5,
+        maxSpeed: this.tuning.meloMaxSpeed,
+        pathPattern: "straight",
+      });
+      this.melons.add(m);
+      getEventBus().emit({
+        type: "spawn",
+        t: this.time.now,
+        kind: "watermelon",
+        id: m.meloId,
+        x,
+        y,
+        mega: false,
+      });
+    }
   }
 
   private onShipHitMelon(melon: Watermelon): void {
@@ -295,28 +406,25 @@ export class GameScene extends Phaser.Scene {
     if (this.lives <= 0) this.gameOver();
   }
 
-  private spawnExplosion(x: number, y: number): void {
-    const ring = this.add.image(x, y, TEX.shockwave).setScale(0.5).setBlendMode(Phaser.BlendModes.ADD);
+  private spawnExplosion(x: number, y: number, magnitude: number = 1): void {
+    const ring = this.add.image(x, y, TEX.shockwave).setScale(0.5 * magnitude).setBlendMode(Phaser.BlendModes.ADD);
     this.tweens.add({
       targets: ring,
-      scale: 3,
+      scale: 3 * magnitude,
       alpha: { from: 1, to: 0 },
-      duration: 380,
+      duration: 380 + magnitude * 80,
       onComplete: () => ring.destroy(),
     });
 
-    // Watermelon slice shrapnel: 5 wedges fly outward, rotating and fading.
-    // Each slice already orients with its rind facing "down" in the texture,
-    // so we rotate so the rind points outward from the blast center.
-    const SLICES = 5;
+    const SLICES = magnitude > 1 ? 9 : 5;
+    const slicePxScale = 2 * magnitude;
     for (let i = 0; i < SLICES; i++) {
       const baseAngle = (i / SLICES) * Math.PI * 2 + this.rng.range(-0.3, 0.3);
-      const speed = this.rng.range(110, 220);
+      const speed = this.rng.range(110, 220) * magnitude;
       const slice = this.add
         .image(x, y, TEX.watermelonChunk)
-        .setScale(2)
-        // Rind in the texture points down (+y). Rotate so rind points along
-        // the travel direction: rotation = baseAngle - PI/2.
+        .setScale(slicePxScale)
+        // Rind in the texture points down (+y); rotate so rind faces travel.
         .setRotation(baseAngle - Math.PI / 2)
         .setDepth(500);
       const targetX = x + Math.cos(baseAngle) * speed;
@@ -328,18 +436,18 @@ export class GameScene extends Phaser.Scene {
         y: targetY,
         rotation: slice.rotation + spin,
         alpha: { from: 1, to: 0 },
-        scale: { from: 2, to: 1.4 },
+        scale: { from: slicePxScale, to: slicePxScale * 0.7 },
         ease: "Cubic.easeOut",
         duration: 650,
         onComplete: () => slice.destroy(),
       });
     }
 
-    // A few seed specks for extra texture.
-    for (let i = 0; i < 4; i++) {
+    const seedCount = magnitude > 1 ? 8 : 4;
+    for (let i = 0; i < seedCount; i++) {
       const seed = this.add.image(x, y, TEX.seed).setScale(2).setDepth(501);
       const angle = this.rng.range(0, Math.PI * 2);
-      const speed = this.rng.range(40, 110);
+      const speed = this.rng.range(40, 110) * magnitude;
       this.tweens.add({
         targets: seed,
         x: x + Math.cos(angle) * speed,

@@ -1,51 +1,103 @@
 import Phaser from "phaser";
 import { TEX } from "../art/sprites";
+import type { PathPattern } from "../levels/levels";
 
 export interface WatermelonOpts {
   vx: number;
   vy: number;
   spin: number;
   target?: Phaser.GameObjects.GameObject & { x: number; y: number };
-  steerAccel?: number; // pixels/sec² toward the target
+  steerAccel?: number;
   maxSpeed?: number;
+  mega?: boolean;
+  hp?: number;
+  scale?: number;
+  pathPattern?: PathPattern;
+  // Strength of perpendicular sinusoidal drift for "wave" path (px/s² peak).
+  waveAmplitude?: number;
 }
+
+const FLASH_TINT = 0xffffff;
 
 export class Watermelon extends Phaser.Physics.Arcade.Sprite {
   static nextId = 1;
+
   readonly meloId: number;
+  readonly mega: boolean;
+  hp: number;
   spin: number;
+
   private steerAccel: number;
   private maxSpeed: number;
   private target?: Phaser.GameObjects.GameObject & { x: number; y: number };
+  private pathPattern: PathPattern;
+  private waveAmplitude: number;
+  private pathPhase: number;
 
   constructor(scene: Phaser.Scene, x: number, y: number, opts: WatermelonOpts) {
     super(scene, x, y, TEX.watermelonSlice, 0);
     scene.add.existing(this);
     scene.physics.add.existing(this);
-    this.setScale(2);
+
+    this.mega = !!opts.mega;
+    this.hp = opts.hp ?? (this.mega ? 4 : 1);
+    const scale = opts.scale ?? (this.mega ? 4 : 2);
+    this.setScale(scale);
+
     const body = this.body as Phaser.Physics.Arcade.Body;
-    body.setCircle(12, 2, 2);
+    // Body radius is in source pixels and doesn't auto-scale with the sprite,
+    // so scale it ourselves. Normal melon (scale 2) keeps r=12 / offset=2;
+    // mega (scale 4) gets r=24 / offset=4 so collision matches visible size.
+    const scaleRatio = scale / 2;
+    body.setCircle(12 * scaleRatio, 2 * scaleRatio, 2 * scaleRatio);
     body.setVelocity(opts.vx, opts.vy);
     body.setAllowGravity(false);
+
     this.meloId = Watermelon.nextId++;
     this.spin = opts.spin;
     this.target = opts.target;
     this.steerAccel = opts.steerAccel ?? 40;
     this.maxSpeed = opts.maxSpeed ?? 260;
+    this.pathPattern = opts.pathPattern ?? "straight";
+    this.waveAmplitude = opts.waveAmplitude ?? 70;
+    // Random phase so coexisting melons don't oscillate in lockstep.
+    this.pathPhase = Math.random() * Math.PI * 2;
+
+    if (this.mega) this.setDepth(50); // draw mega above small melons
+  }
+
+  /** Apply one bullet of damage. Returns true if this hit destroyed the melon. */
+  takeHit(): boolean {
+    this.hp -= 1;
+    if (this.hp <= 0) return true;
+    // Non-killing hit: white flash.
+    this.setTintFill(FLASH_TINT);
+    this.scene.time.delayedCall(70, () => {
+      if (this.active) this.clearTint();
+    });
+    return false;
   }
 
   preUpdate(time: number, delta: number): void {
     super.preUpdate(time, delta);
 
     const body = this.body as Phaser.Physics.Arcade.Body | null;
-    if (body && this.target && this.target.active !== false) {
-      // Gentle homing: nudge velocity toward the target each frame, then cap.
-      const dx = this.target.x - this.x;
-      const dy = this.target.y - this.y;
-      const len = Math.hypot(dx, dy) || 1;
+    if (body) {
       const dt = delta * 0.001;
-      body.velocity.x += (dx / len) * this.steerAccel * dt;
-      body.velocity.y += (dy / len) * this.steerAccel * dt;
+      if (this.target && this.target.active !== false) {
+        // Gentle homing toward the target.
+        const dx = this.target.x - this.x;
+        const dy = this.target.y - this.y;
+        const len = Math.hypot(dx, dy) || 1;
+        body.velocity.x += (dx / len) * this.steerAccel * dt;
+        body.velocity.y += (dy / len) * this.steerAccel * dt;
+      }
+      if (this.pathPattern === "wave") {
+        // Perpendicular sinusoidal drift (px/s² impulse along world X).
+        // Combined with homing, this produces a weaving descent.
+        const phase = time * 0.003 + this.pathPhase;
+        body.velocity.x += Math.sin(phase) * this.waveAmplitude * dt;
+      }
       const speed = Math.hypot(body.velocity.x, body.velocity.y);
       if (speed > this.maxSpeed) {
         body.velocity.x = (body.velocity.x / speed) * this.maxSpeed;

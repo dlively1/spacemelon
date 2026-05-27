@@ -55,6 +55,38 @@ test("ship dies after enough hits and the game-over event carries stats", async 
   expect(snap.scene).toBe("gameover");
 });
 
+test("level 3 spawns a megamelon and it takes multiple hits to break", async ({ page }) => {
+  // Boot straight into level 3 with invincibility so the run can't die early.
+  await bootGame(page, { seed: 0x1234, level: 3, autoplay: true, invincible: true });
+  await waitForEvent(page, "level-start");
+
+  // Hold fire so something gets shot eventually. We need at least 6 small
+  // kills to trigger the L3 mega cue (atKill: 6 in src/levels/levels.ts).
+  await page.evaluate(() => window.__SPACEMELON?.input.fire(true));
+
+  const megaSpawn = await page.waitForFunction(
+    () => window.__SPACEMELON?.events.find((e) => e.type === "spawn" && (e as { mega?: boolean }).mega === true) ?? null,
+    undefined,
+    { timeout: 60_000 }
+  );
+  const ev = await megaSpawn.jsonValue() as { id: number };
+  expect(ev.id).toBeGreaterThan(0);
+
+  // The same megamelon should register at least one non-killing hit before
+  // it's destroyed — confirms HP > 1.
+  await page.waitForFunction(
+    (id) => {
+      const hits = window.__SPACEMELON?.events.filter(
+        (e) => e.type === "hit" && (e as { targetId?: number }).targetId === id
+      ) ?? [];
+      const survived = hits.some((h) => (h as { destroyed?: boolean }).destroyed === false);
+      return survived;
+    },
+    ev.id,
+    { timeout: 60_000 }
+  );
+});
+
 test("pressing space on game-over restarts at level 1", async ({ page }, testInfo) => {
   await bootGame(page, { seed: 0xBEEF, autoplay: true });
   await waitForEvent(page, "level-start");
