@@ -7,7 +7,8 @@ export const TEX = {
   ship: "tex:ship",
   shipThrust: "tex:ship:thrust",
   bullet: "tex:bullet",
-  watermelonSlice: "tex:watermelon:slice", // 4-frame sprite sheet
+  watermelonSlice: "tex:watermelon:slice", // 4-frame tumbling sprite sheet (whole melon)
+  watermelonChunk: "tex:watermelon:chunk", // wedge shrapnel for explosions
   star: "tex:star",
   starBig: "tex:starBig",
   shockwave: "tex:shockwave",
@@ -210,11 +211,41 @@ function drawSeed(scene: Phaser.Scene): void {
   pc.registerTexture(scene, TEX.seed);
 }
 
+// 16x12 wedge: flat cut top (flesh + seeds), curved rind base.
+function drawWatermelonChunk(scene: Phaser.Scene): void {
+  const pc = new PixelCanvas(16, 12);
+  const legend = {
+    "R": PAL.flesh,
+    "H": PAL.fleshLight,
+    "s": PAL.seed,
+    "l": PAL.rindLight,
+    "m": PAL.rindMid,
+    "d": PAL.rindDark,
+  };
+  const grid = [
+    "RRRRRRRRRRRRRRRR",
+    "RRRRHHRRRRRRRRRR",
+    "RRsRRRRRRRRRsRRR",
+    "RRRRRRRRRRRRRRRR",
+    "RRRRRRsRRRRRRRRR",
+    ".RRRRRRRRRRRRRR.",
+    ".RRRRRRRRRRRRRR.",
+    "..llllllllllll..",
+    "...mmmmmmmmmm...",
+    "....dddddddd....",
+    ".....dddddd.....",
+    "......dddd......",
+  ];
+  pc.stamp(0, 0, grid, legend);
+  pc.registerTexture(scene, TEX.watermelonChunk);
+}
+
 export function generateAllSprites(scene: Phaser.Scene): void {
   drawShip(scene, false, TEX.ship);
   drawShip(scene, true, TEX.shipThrust);
   drawBullet(scene);
   drawWatermelon(scene);
+  drawWatermelonChunk(scene);
   drawStars(scene);
   drawShockwave(scene);
   drawSeed(scene);

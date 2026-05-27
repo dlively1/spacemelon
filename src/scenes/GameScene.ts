@@ -148,10 +148,28 @@ export class GameScene extends Phaser.Scene {
     const { width } = this.scale;
     const x = this.rng.range(40, width - 40);
     const y = -30;
-    const vx = this.rng.range(-60, 60);
-    const vy = this.rng.range(60 + this.level * 12, 110 + this.level * 16);
+
+    // Aim initial velocity roughly at the ship with some spread, so they
+    // actually fly toward the player instead of straight down. Homing in
+    // Watermelon.preUpdate adds gentle in-flight tracking.
+    const dx = this.ship.x - x;
+    const dy = Math.max(80, this.ship.y - y);
+    const speed = this.rng.range(120 + this.level * 10, 170 + this.level * 14);
+    const spreadDeg = this.rng.range(-22, 22);
+    const baseAngle = Math.atan2(dy, dx);
+    const angle = baseAngle + (spreadDeg * Math.PI) / 180;
+    const vx = Math.cos(angle) * speed;
+    const vy = Math.sin(angle) * speed;
     const spin = this.rng.range(-2.5, 2.5);
-    const m = new Watermelon(this, x, y, vx, vy, spin);
+
+    const m = new Watermelon(this, x, y, {
+      vx,
+      vy,
+      spin,
+      target: this.ship,
+      steerAccel: 35 + this.level * 6,
+      maxSpeed: 220 + this.level * 12,
+    });
     this.melons.add(m);
     this.spawnedThisLevel++;
     getEventBus().emit({ type: "spawn", t: this.time.now, kind: "watermelon", id: m.meloId, x, y });
@@ -260,17 +278,48 @@ export class GameScene extends Phaser.Scene {
       duration: 380,
       onComplete: () => ring.destroy(),
     });
-    // Seed shrapnel.
-    for (let i = 0; i < 6; i++) {
-      const seed = this.add.image(x, y, TEX.seed).setScale(2);
-      const angle = (i / 6) * Math.PI * 2 + this.rng.range(-0.3, 0.3);
-      const speed = this.rng.range(60, 160);
+
+    // Watermelon slice shrapnel: 5 wedges fly outward, rotating and fading.
+    // Each slice already orients with its rind facing "down" in the texture,
+    // so we rotate so the rind points outward from the blast center.
+    const SLICES = 5;
+    for (let i = 0; i < SLICES; i++) {
+      const baseAngle = (i / SLICES) * Math.PI * 2 + this.rng.range(-0.3, 0.3);
+      const speed = this.rng.range(110, 220);
+      const slice = this.add
+        .image(x, y, TEX.watermelonChunk)
+        .setScale(2)
+        // Rind in the texture points down (+y). Rotate so rind points along
+        // the travel direction: rotation = baseAngle - PI/2.
+        .setRotation(baseAngle - Math.PI / 2)
+        .setDepth(500);
+      const targetX = x + Math.cos(baseAngle) * speed;
+      const targetY = y + Math.sin(baseAngle) * speed;
+      const spin = this.rng.range(-6, 6);
+      this.tweens.add({
+        targets: slice,
+        x: targetX,
+        y: targetY,
+        rotation: slice.rotation + spin,
+        alpha: { from: 1, to: 0 },
+        scale: { from: 2, to: 1.4 },
+        ease: "Cubic.easeOut",
+        duration: 650,
+        onComplete: () => slice.destroy(),
+      });
+    }
+
+    // A few seed specks for extra texture.
+    for (let i = 0; i < 4; i++) {
+      const seed = this.add.image(x, y, TEX.seed).setScale(2).setDepth(501);
+      const angle = this.rng.range(0, Math.PI * 2);
+      const speed = this.rng.range(40, 110);
       this.tweens.add({
         targets: seed,
         x: x + Math.cos(angle) * speed,
         y: y + Math.sin(angle) * speed,
         alpha: 0,
-        duration: 600,
+        duration: 500,
         onComplete: () => seed.destroy(),
       });
     }
