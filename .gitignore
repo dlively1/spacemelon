@@ -1,0 +1,21 @@
+node_modules
+dist
+.cache
+.DS_Store
+
+# Playwright
+test-results/
+playwright-report/
+playwright/.cache/
+blob-report/
+
+# Logs
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+
+# Editor
+.vscode/
+.idea/
+.claude/
+*.log
