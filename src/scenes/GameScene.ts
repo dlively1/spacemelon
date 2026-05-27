@@ -16,6 +16,10 @@ const MEGA_SHATTER_COUNT = 6;
 const SCORE_SMALL_KILL = 100;
 const SCORE_MEGA_HIT = 50;
 const SCORE_MEGA_DESTROY = 500;
+// Penalties for letting melons drift past the ship — encourages aggressive play.
+// Score floors at 0 so a bad run can't go negative.
+const SCORE_SMALL_ESCAPE = -50;
+const SCORE_MEGA_ESCAPE = -200;
 
 export class GameScene extends Phaser.Scene {
   private ship!: Ship;
@@ -307,7 +311,12 @@ export class GameScene extends Phaser.Scene {
       // melons get their drift-in window.
       const offBottom = m.y > this.scale.height + 40;
       const offSide = m.isVulnerable() && (m.x < -60 || m.x > this.scale.width + 60);
-      if (offBottom || offSide) m.destroy();
+      if (offBottom) {
+        if (m.isVulnerable()) this.onMelonEscaped(m);
+        m.destroy();
+      } else if (offSide) {
+        m.destroy();
+      }
       return true;
     });
 
@@ -407,6 +416,33 @@ export class GameScene extends Phaser.Scene {
         y,
         mega: false,
       });
+    }
+  }
+
+  /** A melon drifted off the bottom of the screen — penalize the player. */
+  private onMelonEscaped(melon: Watermelon): void {
+    if (this.gameOverActive) return;
+    const penalty = melon.mega ? SCORE_MEGA_ESCAPE : SCORE_SMALL_ESCAPE;
+    const before = this.score;
+    this.score = Math.max(0, this.score + penalty);
+    const applied = this.score - before; // negative or zero (if floored)
+
+    const bus = getEventBus();
+    bus.emit({
+      type: "escape",
+      t: this.time.now,
+      targetId: melon.meloId,
+      mega: melon.mega,
+      penalty: applied,
+    });
+    bus.emit({ type: "score", t: this.time.now, score: this.score });
+    bus.updateSnapshot({ score: this.score });
+    this.gameHud.setScore(this.score);
+    // Show the penalty popup at the bottom edge where the melon escaped.
+    if (applied < 0) {
+      const x = Phaser.Math.Clamp(melon.x, 24, this.scale.width - 24);
+      const y = this.scale.height - 28;
+      this.gameHud.popScore(x, y, applied);
     }
   }
 

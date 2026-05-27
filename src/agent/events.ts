@@ -8,6 +8,7 @@ export type GameEvent =
   | { type: "level-clear"; t: number; level: number }
   | { type: "spawn"; t: number; kind: "watermelon"; id: number; x: number; y: number; mega: boolean }
   | { type: "hit"; t: number; targetId: number; kind: "watermelon"; destroyed: boolean; mega: boolean }
+  | { type: "escape"; t: number; targetId: number; mega: boolean; penalty: number }
   | { type: "score"; t: number; score: number }
   | { type: "lives"; t: number; lives: number }
   | { type: "game-over"; t: number; score: number; level: number; killedTotal: number; newBest: boolean; bestScore: number }

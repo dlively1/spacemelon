@@ -96,9 +96,14 @@ window.__SPACEMELON = {
 
 ### Event types
 
-`boot`, `scene`, `level-start`, `level-clear`, `spawn`, `hit`, `score`, `lives`,
-`game-over`, `frame`. All carry `t` (ms since boot). See `src/agent/events.ts`
-for exact shapes.
+`boot`, `scene`, `level-start`, `level-clear`, `spawn`, `hit`, `escape`,
+`score`, `lives`, `game-over`, `restart`, `frame`. All carry `t` (ms since
+boot). See `src/agent/events.ts` for exact shapes.
+
+**Scoring rules** live in `src/scenes/GameScene.ts` as constants:
+small kill `+100`, mega hit `+50`, mega destroy `+500`. Letting a melon drift
+off the bottom of the screen penalizes the player (`escape` event):
+small `-50`, mega `-200`. Score floors at 0 — bad runs can't go negative.
 
 ### Test helpers
 

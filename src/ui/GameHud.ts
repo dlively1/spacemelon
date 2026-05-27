@@ -90,14 +90,18 @@ export class GameHud {
     this.scoreText.setText(formatScore(n));
   }
 
-  // Floats "+amount" up from (x,y) and fades out. Used for kill feedback.
+  // Floats "+amount" / "-amount" up from (x,y) and fades out. Positive uses
+  // the warm score color; negative (escape penalty) uses a hot red so the
+  // player notices the punishment.
   popScore(x: number, y: number, amount: number): void {
+    const positive = amount >= 0;
+    const label = positive ? `+${amount}` : `${amount}`; // negative already has '-'
     const text = this.scene.add
-      .text(x, y, `+${amount}`, {
+      .text(x, y, label, {
         fontFamily: "Courier New, monospace",
         fontSize: "14px",
-        color: "#fff0a8",
-        stroke: "#9b3aff",
+        color: positive ? "#fff0a8" : "#ff5577",
+        stroke: positive ? "#9b3aff" : "#3a0010",
         strokeThickness: 2,
       })
       .setOrigin(0.5)
