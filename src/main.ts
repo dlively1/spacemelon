@@ -11,14 +11,20 @@ initEventBus(cfg.seed);
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
   parent: "game",
-  width: 480,
-  height: 640,
   pixelArt: true,
   antialias: false,
   roundPixels: true,
   scale: {
+    // FIT scales the 480x640 logical surface up to the largest size that fits
+    // in the parent while preserving aspect ratio; CENTER_BOTH pins the
+    // resulting canvas inside #game. expandParent=false stops Phaser from
+    // resizing the parent div (we already size #game to 100vw/100vh in CSS),
+    // which previously stretched it and shoved the canvas off-axis.
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,
+    expandParent: false,
+    width: 480,
+    height: 640,
   },
   backgroundColor: "#05030a",
   physics: {

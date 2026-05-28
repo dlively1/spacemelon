@@ -20,14 +20,15 @@
         height: 100%;
         width: 100%;
       }
+      /* Phaser's Scale.FIT + CENTER_BOTH absolutely positions the canvas
+         inside this parent. Don't use flexbox here or the two centering
+         layers fight and the canvas ends up shoved off-axis. */
       #game {
-        position: absolute;
+        position: fixed;
         inset: 0;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        image-rendering: pixelated;
-        image-rendering: crisp-edges;
+        width: 100vw;
+        height: 100vh;
+        overflow: hidden;
       }
       #game canvas {
         image-rendering: pixelated;
