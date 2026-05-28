@@ -45,6 +45,8 @@ src/
     levels.ts             LevelTuning registry (spawn rate, speed, megas) + tuningForLevel
   ui/
     GameHud.ts            Always-on lives + score overlay (separate from agent/hud.ts dev HUD)
+  audio/
+    sfx.ts                Singleton WebAudio synth — procedural retro blips (no asset binaries)
   entities/
     Ship.ts               Player ship (Arcade Sprite)
     Watermelon.ts         Spinning watermelon enemy (small or mega, with HP + path patterns)
@@ -74,6 +76,7 @@ of scraping pixels.
 | `invincible` | `1` / `true` | off | Ship ignores watermelon collisions. |
 | `debug` | `1` / `true` | off | Show HUD + Arcade physics debug. |
 | `paused` | `1` / `true` | off | Boot paused (useful for screenshot framing). |
+| `muted` | `1` / `true` | off | Disable sound effects (in-game, press `M` to toggle). |
 
 Example: `http://localhost:5173/?seed=42&level=3&autoplay=1&invincible=1&debug=1`
 
@@ -165,11 +168,15 @@ When iterating on gameplay or visuals:
 - **New input action:** extend the `input` object in `GameBridge` (in
   `agent/events.ts`), bind it in `GameScene.create`, and expose a helper from
   `gameClient.ts`.
+- **New sound:** add a `SfxName` variant + a `case` in `play()` inside
+  `src/audio/sfx.ts` (use `tone()` for melodic blips, `noiseBurst()` for booms).
+  Trigger via `sfx.play("name")` from gameplay code. Always-safe — `sfx` no-ops
+  if the AudioContext can't initialize. Tests run with `?muted=1`.
 
 ## Non-goals (for now)
 
-- No audio.
-- No asset binaries / sprite sheets on disk.
+- No asset binaries / sprite sheets / audio files on disk — sounds are
+  procedurally synthesized in `src/audio/sfx.ts`.
 - No multiplayer / networking.
 - No persistence — score resets on game-over.
 

@@ -5,6 +5,7 @@ export interface AgentConfig {
   autoplay: boolean;
   invincible: boolean;
   paused: boolean;
+  muted: boolean;
 }
 
 const DEFAULTS: AgentConfig = {
@@ -14,6 +15,7 @@ const DEFAULTS: AgentConfig = {
   autoplay: false,
   invincible: false,
   paused: false,
+  muted: false,
 };
 
 function asInt(v: string | null, fallback: number): number {
@@ -36,5 +38,6 @@ export function readAgentConfig(search: string = location.search): AgentConfig {
     autoplay: asBool(p.get("autoplay"), DEFAULTS.autoplay),
     invincible: asBool(p.get("invincible"), DEFAULTS.invincible),
     paused: asBool(p.get("paused"), DEFAULTS.paused),
+    muted: asBool(p.get("muted"), DEFAULTS.muted),
   };
 }

@@ -10,6 +10,7 @@ import { GameHud } from "../ui/GameHud";
 import { loadBestScore, saveBestScore } from "../agent/highscore";
 import { buildBackground, worldForLevel, type WorldDef } from "../worlds/worlds";
 import { tuningForLevel, type LevelTuning } from "../levels/levels";
+import { sfx } from "../audio/sfx";
 
 const STARTING_LIVES = 3;
 const MEGA_SHATTER_COUNT = 6;
@@ -32,6 +33,7 @@ export class GameScene extends Phaser.Scene {
   private keyS!: Phaser.Input.Keyboard.Key;
   private fireKey!: Phaser.Input.Keyboard.Key;
   private pauseKey!: Phaser.Input.Keyboard.Key;
+  private muteKey!: Phaser.Input.Keyboard.Key;
 
   private rng!: Rng;
   private cfg!: AgentConfig;
@@ -118,6 +120,13 @@ export class GameScene extends Phaser.Scene {
     this.fireKey = this.input.keyboard!.addKey("SPACE");
     this.pauseKey = this.input.keyboard!.addKey("P");
     this.pauseKey.on("down", () => this.togglePause());
+    this.muteKey = this.input.keyboard!.addKey("M");
+    this.muteKey.on("down", () => sfx.setMuted(!sfx.isMuted()));
+
+    // First user gesture in the gameplay scene — kick the AudioContext awake.
+    sfx.setMuted(this.cfg.muted);
+    this.input.keyboard!.once("keydown", () => sfx.resume());
+    this.input.once("pointerdown", () => sfx.resume());
 
     this.gameHud = new GameHud(this, { lives: this.lives, score: this.score });
     this.hud = new DebugHud(this);
@@ -153,6 +162,7 @@ export class GameScene extends Phaser.Scene {
     const bus = getEventBus();
     bus.emit({ type: "level-start", t: this.time.now, level, world: this.world.id });
     bus.updateSnapshot({ level, world: this.world.id });
+    sfx.play("levelStart");
 
     // Banner.
     const { width, height } = this.scale;
@@ -341,6 +351,7 @@ export class GameScene extends Phaser.Scene {
     body.setAllowGravity(false);
     body.setSize(6, 14).setOffset(0, 0);
     body.setVelocity(0, -560);
+    sfx.play("fire");
   }
 
   private onBulletHitMelon(bullet: Phaser.Physics.Arcade.Sprite, melon: Watermelon): void {
@@ -367,6 +378,7 @@ export class GameScene extends Phaser.Scene {
       bus.emit({ type: "score", t: this.time.now, score: this.score });
       bus.updateSnapshot({ score: this.score });
       this.gameHud.setScore(this.score);
+      sfx.play("megaHit");
       return;
     }
 
@@ -374,10 +386,12 @@ export class GameScene extends Phaser.Scene {
     if (wasMega) {
       award = SCORE_MEGA_DESTROY;
       this.cameras.main.shake(140, 0.008);
+      sfx.play("megaDestroy");
     } else {
       award = SCORE_SMALL_KILL;
       this.killedThisLevel++;
       this.killedTotal++;
+      sfx.play("hit");
     }
     this.score += award;
     bus.emit({ type: "score", t: this.time.now, score: this.score });
@@ -443,6 +457,7 @@ export class GameScene extends Phaser.Scene {
       const x = Phaser.Math.Clamp(melon.x, 24, this.scale.width - 24);
       const y = this.scale.height - 28;
       this.gameHud.popScore(x, y, applied);
+      sfx.play("escape");
     }
   }
 
@@ -456,6 +471,7 @@ export class GameScene extends Phaser.Scene {
     bus.updateSnapshot({ lives: this.lives });
     this.gameHud.setLives(this.lives);
     this.cameras.main.shake(180, 0.01);
+    sfx.play("shipHit");
     if (this.lives <= 0) this.gameOver();
   }
 
@@ -515,6 +531,7 @@ export class GameScene extends Phaser.Scene {
   private advanceLevel(): void {
     const bus = getEventBus();
     bus.emit({ type: "level-clear", t: this.time.now, level: this.level });
+    sfx.play("levelClear");
     // Clear remaining melons.
     this.melons.clear(true, true);
     this.time.removeAllEvents();
@@ -540,6 +557,7 @@ export class GameScene extends Phaser.Scene {
       bestScore,
     });
     bus.updateSnapshot({ scene: "gameover", bestScore });
+    sfx.play("gameOver");
 
     this.physics.pause();
     this.time.removeAllEvents();
@@ -640,6 +658,7 @@ export class GameScene extends Phaser.Scene {
   private restart(): void {
     const bus = getEventBus();
     bus.emit({ type: "restart", t: this.time.now });
+    sfx.play("restart");
     // Always restart from level 1, regardless of URL startLevel.
     this.scene.restart({ startLevel: 1 });
   }

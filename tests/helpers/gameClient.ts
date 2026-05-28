@@ -7,6 +7,9 @@ export interface GameClientOptions {
   autoplay?: boolean;
   invincible?: boolean;
   debug?: boolean;
+  // Defaults to true — keeps headless chromium quiet and avoids AudioContext
+  // gesture warnings. Set false for tests that want to assert audio behavior.
+  muted?: boolean;
 }
 
 export async function bootGame(page: Page, opts: GameClientOptions = {}): Promise<void> {
@@ -16,6 +19,7 @@ export async function bootGame(page: Page, opts: GameClientOptions = {}): Promis
   if (opts.autoplay) params.set("autoplay", "1");
   if (opts.invincible) params.set("invincible", "1");
   if (opts.debug) params.set("debug", "1");
+  if (opts.muted !== false) params.set("muted", "1");
   const qs = params.toString();
   await page.goto(`/${qs ? `?${qs}` : ""}`);
   await page.waitForFunction(() => !!window.__SPACEMELON?.snapshot.ready, undefined, {
