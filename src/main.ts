@@ -4,7 +4,9 @@ import { MenuScene } from "./scenes/MenuScene";
 import { GameScene } from "./scenes/GameScene";
 import { initEventBus } from "./agent/events";
 import { readAgentConfig } from "./agent/config";
+import { installFavicon } from "./art/favicon";
 
+installFavicon();
 const cfg = readAgentConfig();
 initEventBus(cfg.seed);
 
