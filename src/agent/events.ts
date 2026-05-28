@@ -127,6 +127,11 @@ class EventBus {
   }
 
   emit(event: GameEvent): void {
+    // Always stamp `t` with a monotonic clock here, regardless of what the
+    // caller passed. Phaser's `scene.time.now` resets across scene restarts,
+    // which breaks `event.t > since` filters like waitForEventAfter; using
+    // performance.now() keeps t monotonic for the whole page session.
+    event.t = performance.now();
     const events = this.bridge.events;
     events.push(event);
     if (events.length > MAX_EVENTS) events.splice(0, events.length - MAX_EVENTS);

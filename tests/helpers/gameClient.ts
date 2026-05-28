@@ -89,3 +89,35 @@ export async function hold(
   await page.waitForTimeout(durationMs);
   await page.evaluate((c) => window.__SPACEMELON?.input[c](false), control);
 }
+
+// Sweep the ship left↔right while firing for `durationMs`. Useful for tests
+// that need reliable hits — a stationary ship at x=480/2 misses most melons
+// because of how L1's spread aims them slightly off-column.
+export async function sweepFire(page: Page, durationMs: number, periodMs = 600): Promise<void> {
+  await page.evaluate(() => window.__SPACEMELON?.input.fire(true));
+  const start = Date.now();
+  let leftDown = true;
+  await page.evaluate(() => window.__SPACEMELON?.input.left(true));
+  while (Date.now() - start < durationMs) {
+    await page.waitForTimeout(periodMs);
+    // Toggle direction.
+    const wasLeft = leftDown;
+    leftDown = !leftDown;
+    await page.evaluate(
+      ({ wasLeft, nowLeft }) => {
+        const i = window.__SPACEMELON?.input;
+        if (!i) return;
+        if (wasLeft) i.left(false); else i.right(false);
+        if (nowLeft) i.left(true); else i.right(true);
+      },
+      { wasLeft, nowLeft: leftDown }
+    );
+  }
+  await page.evaluate(() => {
+    const i = window.__SPACEMELON?.input;
+    if (!i) return;
+    i.left(false);
+    i.right(false);
+    i.fire(false);
+  });
+}

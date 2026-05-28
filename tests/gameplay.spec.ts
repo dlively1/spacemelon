@@ -1,31 +1,33 @@
 import { test, expect } from "@playwright/test";
 import {
   bootGame,
-  hold,
   snapshot,
+  sweepFire,
   waitForEvent,
   waitForEventAfter,
 } from "./helpers/gameClient";
 
-test("firing while waiting eventually destroys a watermelon and scores", async ({ page }) => {
+test("firing while sweeping eventually destroys a watermelon and scores", async ({ page }) => {
+  test.setTimeout(30_000);
   await bootGame(page, { seed: 7, autoplay: true, invincible: true });
-  await waitForEvent(page, "level-start");
-  await hold(page, "fire", 4_000);
-  const hit = await waitForEvent(page, "hit", 8_000);
+  const start = await waitForEvent(page, "level-start");
+  // L1's narrow spread + slow speed mean a stationary ship's bullets miss
+  // most melons. Sweep the ship side-to-side so bullets sample x more widely.
+  sweepFire(page, 8_000).catch(() => {});
+  const hit = await waitForEventAfter(page, "hit", start.t, 12_000);
   expect(hit.kind).toBe("watermelon");
   const snap = await snapshot(page);
   expect(snap.score).toBeGreaterThan(0);
 });
 
 test("clearing enough watermelons advances to level 2", async ({ page }) => {
+  test.setTimeout(120_000);
   await bootGame(page, { seed: 13, autoplay: true, invincible: true });
-  await waitForEvent(page, "level-start");
-  // Hold fire long enough for the spawn rate to feed the 12-kill threshold.
-  await page.evaluate(() => window.__SPACEMELON?.input.fire(true));
-  const lvl2 = await waitForEvent(page, "level-start", 60_000);
-  // First level-start is level 1 (from the earlier wait), but waitForEvent
-  // returns the first occurrence — so re-snapshot to confirm we're on >= 2.
-  expect(lvl2.level).toBeGreaterThanOrEqual(1);
+  const start1 = await waitForEvent(page, "level-start");
+  // Sweep+fire indefinitely while waiting for the level-2 start event.
+  sweepFire(page, 90_000).catch(() => {});
+  const lvl2 = await waitForEventAfter(page, "level-start", start1.t, 90_000);
+  expect(lvl2.level).toBeGreaterThanOrEqual(2);
   const snap = await snapshot(page);
   expect(snap.level).toBeGreaterThanOrEqual(2);
 });
@@ -41,10 +43,12 @@ test("snapshot exposes lives and score for the always-on HUD", async ({ page }) 
 });
 
 test("ship dies after enough hits and the game-over event carries stats", async ({ page }) => {
-  // No invincibility — melons home toward the ship, so it dies reliably.
-  await bootGame(page, { seed: 0xDEAD, autoplay: true });
+  test.setTimeout(60_000);
+  // Start at L2 — L2's steerAccel=40 makes melons home toward the ship, so an
+  // idle ship dies reliably. L1 is too gentle (no homing, narrow spread).
+  await bootGame(page, { seed: 0xDEAD, level: 2, autoplay: true });
   await waitForEvent(page, "level-start");
-  const over = await waitForEvent(page, "game-over", 60_000);
+  const over = await waitForEvent(page, "game-over", 45_000);
   expect(over.score).toBeGreaterThanOrEqual(0);
   expect(over.level).toBeGreaterThanOrEqual(1);
   expect(over.killedTotal).toBeGreaterThanOrEqual(0);
@@ -56,18 +60,19 @@ test("ship dies after enough hits and the game-over event carries stats", async 
 });
 
 test("level 3 spawns a megamelon and it takes multiple hits to break", async ({ page }) => {
-  // Boot straight into level 3 with invincibility so the run can't die early.
+  test.setTimeout(120_000);
   await bootGame(page, { seed: 0x1234, level: 3, autoplay: true, invincible: true });
   await waitForEvent(page, "level-start");
 
-  // Hold fire so something gets shot eventually. We need at least 6 small
-  // kills to trigger the L3 mega cue (atKill: 6 in src/levels/levels.ts).
-  await page.evaluate(() => window.__SPACEMELON?.input.fire(true));
+  // Sweep+fire so we actually hit the 6-kill mega cue (atKill: 6 in
+  // src/levels/levels.ts). A stationary ship at center barely lands hits
+  // against L3's wave-path melons.
+  sweepFire(page, 100_000).catch(() => {});
 
   const megaSpawn = await page.waitForFunction(
     () => window.__SPACEMELON?.events.find((e) => e.type === "spawn" && (e as { mega?: boolean }).mega === true) ?? null,
     undefined,
-    { timeout: 60_000 }
+    { timeout: 90_000 }
   );
   const ev = await megaSpawn.jsonValue() as { id: number };
   expect(ev.id).toBeGreaterThan(0);
@@ -83,14 +88,16 @@ test("level 3 spawns a megamelon and it takes multiple hits to break", async ({ 
       return survived;
     },
     ev.id,
-    { timeout: 60_000 }
+    { timeout: 30_000 }
   );
 });
 
 test("pressing space on game-over restarts at level 1", async ({ page }, testInfo) => {
-  await bootGame(page, { seed: 0xBEEF, autoplay: true });
+  test.setTimeout(60_000);
+  // L2 — same reason as the ship-dies test: homing makes the death reliable.
+  await bootGame(page, { seed: 0xBEEF, level: 2, autoplay: true });
   await waitForEvent(page, "level-start");
-  const over = await waitForEvent(page, "game-over", 60_000);
+  const over = await waitForEvent(page, "game-over", 45_000);
 
   // Capture the game-over panel for visual review.
   await page.waitForTimeout(300);
