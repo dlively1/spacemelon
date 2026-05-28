@@ -50,6 +50,7 @@ export class GameScene extends Phaser.Scene {
   // Megamelon cues consumed by index as kill count advances.
   private megaCueIdx = 0;
   private gameOverActive = false;
+  private levelTransitioning = false;
   private stars: Phaser.GameObjects.Image[] = [];
   private bgContainer!: Phaser.GameObjects.Container;
   private input$ = { left: false, right: false, up: false, down: false, fire: false };
@@ -152,6 +153,7 @@ export class GameScene extends Phaser.Scene {
     this.spawnedThisLevel = 0;
     this.killedThisLevel = 0;
     this.megaCueIdx = 0;
+    this.levelTransitioning = false;
 
     // Rebuild background for the new world.
     this.bgContainer.destroy(true);
@@ -329,6 +331,17 @@ export class GameScene extends Phaser.Scene {
       }
       return true;
     });
+
+    // Unstick: spawn cap exhausted and no melons remain — the level can never
+    // be cleared through kills, so advance anyway.
+    if (
+      !this.gameOverActive &&
+      !this.levelTransitioning &&
+      this.spawnedThisLevel >= this.tuning.totalSpawnsCap &&
+      this.melons.getLength() === 0
+    ) {
+      this.advanceLevel();
+    }
 
     this.hud.update(this, {
       level: this.level,
@@ -529,6 +542,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private advanceLevel(): void {
+    this.levelTransitioning = true;
     const bus = getEventBus();
     bus.emit({ type: "level-clear", t: this.time.now, level: this.level });
     sfx.play("levelClear");
