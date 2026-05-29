@@ -23,7 +23,7 @@ export class MenuScene extends Phaser.Scene {
 
     const { width, height } = this.scale;
     this.add
-      .text(width / 2, height / 2 - 80, "SPACEMELON", {
+      .text(width / 2, height / 2 - 80, "SPACEMELONS", {
         fontFamily: "Courier New, monospace",
         fontSize: "48px",
         color: "#fff0a8",
