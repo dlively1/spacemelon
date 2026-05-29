@@ -6,6 +6,9 @@ export default defineConfig({
     host: true, // bind 0.0.0.0 so dev server is reachable on LAN
     port: 5173,
     strictPort: true,
+    watch: {
+      ignored: ["**/.claude/**"],
+    },
   },
   preview: {
     host: true,
