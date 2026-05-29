@@ -32,6 +32,25 @@ test("clearing enough watermelons advances to level 2", async ({ page }) => {
   expect(snap.level).toBeGreaterThanOrEqual(2);
 });
 
+test("melons drifting off the bottom emit escape penalties without crashing", async ({ page }) => {
+  test.setTimeout(60_000);
+  // An idle, invincible ship lets melons sail past and off the bottom. The
+  // off-bottom cull used to destroy melons mid-iteration over the physics
+  // group, which handed Phaser's iterate() an undefined entry and threw —
+  // crashing the game the first time a melon escaped. Assert escapes fire and
+  // no page error surfaces.
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(String(e.stack || e)));
+
+  await bootGame(page, { seed: 0xC0FFEE, level: 1, autoplay: true, invincible: true });
+  await waitForEvent(page, "level-start");
+  const esc = await waitForEvent(page, "escape", 45_000);
+  expect(esc.mega).toBe(false);
+  // Let several more frames run so any post-escape crash would surface.
+  await page.waitForTimeout(1500);
+  expect(errors).toEqual([]);
+});
+
 test("snapshot exposes lives and score for the always-on HUD", async ({ page }) => {
   await bootGame(page, { seed: 99, autoplay: true, invincible: true });
   await waitForEvent(page, "level-start");
@@ -44,11 +63,15 @@ test("snapshot exposes lives and score for the always-on HUD", async ({ page }) 
 
 test("ship dies after enough hits and the game-over event carries stats", async ({ page }) => {
   test.setTimeout(60_000);
-  // Start at L2 — L2's steerAccel=40 makes melons home toward the ship, so an
-  // idle ship dies reliably. L1 is too gentle (no homing, narrow spread).
+  // Start at L2 and steer UP into the top spawn stream. An idle ship no longer
+  // dies reliably: melons keep their aimed spawn velocity plus spread, so they
+  // sail past a stationary target instead of homing into it. Flying into where
+  // melons enter the screen makes draining the 3 lives deterministic.
   await bootGame(page, { seed: 0xDEAD, level: 2, autoplay: true });
   await waitForEvent(page, "level-start");
+  await page.keyboard.down("ArrowUp");
   const over = await waitForEvent(page, "game-over", 45_000);
+  await page.keyboard.up("ArrowUp");
   expect(over.score).toBeGreaterThanOrEqual(0);
   expect(over.level).toBeGreaterThanOrEqual(1);
   expect(over.killedTotal).toBeGreaterThanOrEqual(0);
@@ -94,10 +117,13 @@ test("level 3 spawns a megamelon and it takes multiple hits to break", async ({ 
 
 test("pressing space on game-over restarts at level 1", async ({ page }, testInfo) => {
   test.setTimeout(60_000);
-  // L2 — same reason as the ship-dies test: homing makes the death reliable.
+  // L2 — steer UP into the spawn stream so the death is deterministic (see the
+  // ship-dies test for why an idle ship no longer reliably dies).
   await bootGame(page, { seed: 0xBEEF, level: 2, autoplay: true });
   await waitForEvent(page, "level-start");
+  await page.keyboard.down("ArrowUp");
   const over = await waitForEvent(page, "game-over", 45_000);
+  await page.keyboard.up("ArrowUp");
 
   // Capture the game-over panel for visual review.
   await page.waitForTimeout(300);

@@ -1,7 +1,6 @@
 import Phaser from "phaser";
 import { PAL } from "./palettes";
 import { PixelCanvas } from "./pixelCanvas";
-import { Rng } from "../agent/rng";
 
 export const TEX = {
   ship: "tex:ship",
@@ -99,75 +98,80 @@ function drawBullet(scene: Phaser.Scene): void {
 }
 
 // 28x28 watermelon, 4-frame "tumble" sprite sheet (112x28).
-// Each frame rotates the seed/stripe pattern so it looks like it's spinning.
+// A WHOLE melon: an oval (wider than tall) green body with curved meridian
+// stripes that sweep across the 4 frames so it reads as a melon spinning about
+// its vertical axis. The entity also rotates the sprite, so the two combine
+// into a chaotic zero-g tumble. (Red flesh + seeds live on the shatter chunks.)
 function drawWatermelon(scene: Phaser.Scene): void {
   const W = 28;
   const H = 28;
   const FRAMES = 4;
   const sheet = new PixelCanvas(W * FRAMES, H);
-  const rng = new Rng(0xC0FFEE);
 
   const cx = W / 2 - 0.5;
   const cy = H / 2 - 0.5;
-  const R = 12;
+  // Oval: noticeably wider than tall (~1.3:1) so it reads as a watermelon,
+  // not a ball. Rx/Ry are the ellipse half-axes in source pixels.
+  const Rx = 13;
+  const Ry = 10;
+  const STRIPES = 8;
 
   for (let f = 0; f < FRAMES; f++) {
     const off = f * W;
-    // Rind: outer dark, mid green, light highlight, stripes.
+    // Sweep exactly one stripe-gap across the 4 frames so the loop is seamless
+    // and the stripes appear to rotate. (A full 2π step would land on a
+    // multiple of the stripe spacing and look frozen.)
+    const phase = (f / FRAMES) * ((Math.PI * 2) / STRIPES);
+
+    // Body: shade the ellipse with a fake upper-left light source.
     for (let y = 0; y < H; y++) {
       for (let x = 0; x < W; x++) {
-        const dx = x - cx;
-        const dy = y - cy;
-        const d2 = dx * dx + dy * dy;
-        if (d2 > R * R) continue;
-        const d = Math.sqrt(d2);
-        let color: number = PAL.rindMid;
-        if (d > R - 1) color = PAL.rindDark;
-        else if (d > R - 3) color = PAL.rindMid;
-        else if (d > R - 4.5) color = PAL.rindLight;
-        else color = PAL.flesh;
+        const nx = (x - cx) / Rx;
+        const ny = (y - cy) / Ry;
+        const n2 = nx * nx + ny * ny;
+        if (n2 > 1) continue;
+        const n = Math.sqrt(n2);
+        // Lambert-ish term: +1 fully lit (upper-left), -1 in shadow.
+        const nl = (-nx - ny) / Math.SQRT2;
+        let color: number;
+        if (n > 0.93) color = PAL.rindDark; // crisp rim
+        else if (nl > 0.45) color = PAL.rindLight; // lit cap
+        else if (nl > -0.6) color = PAL.rindMid; // body (most of it)
+        else color = PAL.rindDark; // thin shaded crescent, lower-right
         sheet.px(off + x, y, color);
       }
     }
-    // Stripes on rind (rotate per frame for spin effect).
-    const phase = (f / FRAMES) * Math.PI * 2;
-    for (let s = 0; s < 6; s++) {
-      const ang = phase + (s / 6) * Math.PI * 2;
-      const sx = Math.cos(ang);
-      const sy = Math.sin(ang);
-      for (let t = R - 4; t < R; t++) {
-        const x = Math.round(cx + sx * t);
-        const y = Math.round(cy + sy * t);
-        sheet.px(off + x, y, PAL.rindStripe);
-      }
-    }
-    // Flesh shading: lighter band toward upper-left.
-    for (let y = 0; y < H; y++) {
-      for (let x = 0; x < W; x++) {
-        const dx = x - cx;
-        const dy = y - cy;
-        const d2 = dx * dx + dy * dy;
-        if (d2 > (R - 4.5) * (R - 4.5)) continue;
-        if (dx + dy < -3 && rng.chance(0.5)) {
-          sheet.px(off + x, y, PAL.fleshLight);
+
+    // Meridian stripes: longitudes evenly spaced around the melon. As `phase`
+    // advances they sweep across the visible face; only the front hemisphere
+    // (cos(lon) > threshold) is drawn. Each meridian narrows toward the poles,
+    // tracing the curved stripe silhouette of a real watermelon.
+    for (let s = 0; s < STRIPES; s++) {
+      const lon = phase + (s / STRIPES) * Math.PI * 2;
+      const facing = Math.cos(lon);
+      if (facing <= 0.12) continue; // back-facing — hidden
+      const sinL = Math.sin(lon);
+      for (let y = 0; y < H; y++) {
+        const ny = (y - cy) / Ry;
+        if (Math.abs(ny) >= 0.97) continue; // skip the very poles
+        const halfW = Rx * Math.sqrt(1 - ny * ny);
+        // Slight wobble so stripes look hand-drawn, not laser-straight.
+        const wobble = Math.sin(ny * Math.PI * 1.6 + lon) * 0.8;
+        const x = Math.round(cx + sinL * halfW + wobble);
+        sheet.px(off + x, y, PAL.rindDark);
+        // Thicken toward the equator where the meridian faces us most.
+        if (facing > 0.55 && Math.abs(ny) < 0.75) {
+          sheet.px(off + x + 1, y, PAL.rindDark);
         }
       }
     }
-    // Seeds — placed in a ring that rotates per frame.
-    const seedCount = 7;
-    for (let i = 0; i < seedCount; i++) {
-      const a = phase * 1.3 + (i / seedCount) * Math.PI * 2;
-      const r = 4 + ((i * 1.7) % 3);
-      const sx = Math.round(cx + Math.cos(a) * r);
-      const sy = Math.round(cy + Math.sin(a) * r);
-      sheet.px(off + sx, sy, PAL.seed);
-      sheet.px(off + sx, sy - 1, PAL.seed);
-      sheet.px(off + sx + 1, sy, PAL.seedShine);
-    }
-    // Specular pip top-left.
-    sheet.px(off + Math.round(cx - 5), Math.round(cy - 6), PAL.fleshHighlight);
-    sheet.px(off + Math.round(cx - 4), Math.round(cy - 6), PAL.fleshHighlight);
-    sheet.px(off + Math.round(cx - 5), Math.round(cy - 5), PAL.fleshHighlight);
+
+    // Specular glint, upper-left, on the lit cap.
+    const gx = Math.round(cx - Rx * 0.42);
+    const gy = Math.round(cy - Ry * 0.45);
+    sheet.px(off + gx, gy, PAL.fleshHighlight);
+    sheet.px(off + gx + 1, gy, PAL.fleshHighlight);
+    sheet.px(off + gx, gy + 1, PAL.fleshHighlight);
   }
 
   if (scene.textures.exists(TEX.watermelonSlice)) scene.textures.remove(TEX.watermelonSlice);

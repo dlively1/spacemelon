@@ -33,6 +33,10 @@ export class Watermelon extends Phaser.Physics.Arcade.Sprite {
   private pathPattern: PathPattern;
   private waveAmplitude: number;
   private pathPhase: number;
+  // Spawn velocity, re-asserted on the first preUpdate — see the note there.
+  private launchVx: number;
+  private launchVy: number;
+  private launched = false;
   // Melons spawn just outside the play area and "drift in." They can't be
   // killed until their sprite touches the visible area, so the player never
   // gets credit for off-screen blasts.
@@ -54,6 +58,8 @@ export class Watermelon extends Phaser.Physics.Arcade.Sprite {
     // mega (scale 4) gets r=24 / offset=4 so collision matches visible size.
     const scaleRatio = scale / 2;
     body.setCircle(12 * scaleRatio, 2 * scaleRatio, 2 * scaleRatio);
+    this.launchVx = opts.vx;
+    this.launchVy = opts.vy;
     body.setVelocity(opts.vx, opts.vy);
     body.setAllowGravity(false);
 
@@ -102,6 +108,15 @@ export class Watermelon extends Phaser.Physics.Arcade.Sprite {
 
     const body = this.body as Phaser.Physics.Arcade.Body | null;
     if (body) {
+      if (!this.launched) {
+        // Phaser's Arcade physics Group resets a body to the group's (zero)
+        // velocity defaults when the sprite is add()'ed — which happens AFTER
+        // our constructor set the spawn velocity. Re-assert it on the first
+        // update so melons actually drift in. Without this, L1 melons (which
+        // have no homing accel to mask the lost velocity) sit frozen offscreen.
+        body.setVelocity(this.launchVx, this.launchVy);
+        this.launched = true;
+      }
       const dt = delta * 0.001;
       if (this.target && this.target.active !== false) {
         // Gentle homing toward the target.

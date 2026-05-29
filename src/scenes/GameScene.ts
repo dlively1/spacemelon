@@ -315,22 +315,30 @@ export class GameScene extends Phaser.Scene {
       }
       return true;
     });
+    // Collect off-screen melons first, then act on them AFTER iterating.
+    // Destroying a melon removes it from the group mid-iteration, which shifts
+    // the entries array and hands `iterate` an undefined entry on the next
+    // step — that's the crash that fired when a melon drifted off the bottom.
+    const escaped: Watermelon[] = [];
+    const culled: Watermelon[] = [];
     this.melons.children.iterate((obj) => {
-      const m = obj as Watermelon;
-      if (!m.active) return true;
+      const m = obj as Watermelon | undefined;
+      if (!m || !m.active) return true;
       // Off the bottom: drifted past the ship. Off the sides: only kill if
       // they've already been on-screen (vulnerable) so freshly-spawned side
       // melons get their drift-in window.
       const offBottom = m.y > this.scale.height + 40;
       const offSide = m.isVulnerable() && (m.x < -60 || m.x > this.scale.width + 60);
       if (offBottom) {
-        if (m.isVulnerable()) this.onMelonEscaped(m);
-        m.destroy();
+        if (m.isVulnerable()) escaped.push(m);
+        culled.push(m);
       } else if (offSide) {
-        m.destroy();
+        culled.push(m);
       }
       return true;
     });
+    for (const m of escaped) this.onMelonEscaped(m);
+    for (const m of culled) m.destroy();
 
     // Unstick: spawn cap exhausted and no melons remain — the level can never
     // be cleared through kills, so advance anyway.
