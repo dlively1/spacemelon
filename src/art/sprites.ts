@@ -14,57 +14,74 @@ export const TEX = {
   seed: "tex:seed",
 } as const;
 
-// 24x24 ship. Symmetric Galaga-style fighter with cockpit + thrusters.
+// 28x30 ship — "Twin-Fang Cruiser": a beefy Galaga gunship. Central fuselage
+// with a yellow cockpit, forward-swept fang wings tipped with dual cannons,
+// and a bank of four thrusters. Drawn procedurally around an even-width axis
+// (the seam between columns 13 and 14) so it stays perfectly symmetric.
+const SHIP_W = 28;
+const SHIP_H = 34; // extra bottom rows give the thrust frame room for a plume
+const SHIP_LC = 13;
+const SHIP_RC = 14;
+
+function shipMcol(pc: PixelCanvas, dx: number, y: number, c: number): void {
+  pc.px(SHIP_LC - dx, y, c);
+  pc.px(SHIP_RC + dx, y, c);
+}
+
 function drawShip(scene: Phaser.Scene, thrusting: boolean, key: string): void {
-  const pc = new PixelCanvas(24, 28);
-  const legend = {
-    "#": PAL.hullDark,
-    "H": PAL.hull,
-    "L": PAL.hullLight,
-    "E": PAL.hullEdge,
-    "C": PAL.cockpit,
-    "O": PAL.cockpitEdge,
-    "T": PAL.thruster,
-    "*": PAL.thrusterHot,
-  };
-  const grid = [
-    "..........EE............",
-    ".........EHHE...........", // nose
-    ".........EHHE...........",
-    "........ELHHLE..........",
-    "........ELCCLE..........",
-    "........EOCCOE..........",
-    ".......EHLCCLHE.........",
-    "......EEHHCCHHEE........",
-    ".....EHHHLCCLHHHE.......",
-    "....EHHHHHCCHHHHHE......",
-    "...EHHHHHHCCHHHHHHE.....",
-    "..EHHLHHHHCCHHHHLHHE....",
-    ".EHHLLHHHHCCHHHHLLHHE...",
-    ".EHLLHHHHHCCHHHHHLLHE...",
-    "EHLL#HHHHHCCHHHHH#LLHE..",
-    "EHL##HHHHHCCHHHHH##LHE..",
-    "EHL#.HHHHHHHHHHHH.#LHE..",
-    "EHL#.HHHHHHHHHHHH.#LHE..",
-    ".E#..#HHHHHHHHHH#..#E...",
-    ".....#HH##HH##HH#.......",
-    ".....#H#TT##TT#H#.......",
-    "......#TT*TT*TT#........",
-    ".......*T**T**T*........",
-  ];
-  pc.stamp(0, 1, grid, legend);
+  const pc = new PixelCanvas(SHIP_W, SHIP_H);
+
+  // --- Fuselage: pointed nose tapering into a body column ---
+  const noseY = 2;
+  const tailY = 26;
+  for (let y = noseY; y <= tailY; y++) {
+    const hw = y < 6 ? y - noseY : 3;
+    for (let dx = 0; dx <= hw; dx++) {
+      const c = dx === hw ? PAL.hullDark : dx <= 1 ? PAL.hullLight : PAL.hull;
+      shipMcol(pc, dx, y, c);
+    }
+  }
+
+  // --- Forward-swept fang wings (bulge mid-span, tuck back to the body) ---
+  for (let y = 8; y <= 24; y++) {
+    const inner = 3;
+    const outer = Math.max(inner, Math.round(12 - Math.abs(y - 15) * 0.55));
+    for (let dx = inner; dx <= outer; dx++) {
+      const c = dx === outer ? PAL.hullDark : dx === inner ? PAL.hullLight : PAL.hull;
+      shipMcol(pc, dx, y, c);
+    }
+  }
+
+  // --- Dual cannons jutting forward from the wings ---
+  for (let y = 4; y <= 10; y++) {
+    shipMcol(pc, 10, y, y <= 5 ? PAL.hullEdge : PAL.hull);
+    shipMcol(pc, 11, y, PAL.hullDark);
+    shipMcol(pc, 9, y, PAL.hullDark);
+  }
+
+  // --- Cockpit ---
+  for (let y = 8; y <= 13; y++) {
+    const hw = y === 8 || y === 13 ? 0 : 1;
+    for (let dx = 0; dx <= hw; dx++) shipMcol(pc, dx, y, PAL.cockpit);
+  }
+  shipMcol(pc, 1, 9, PAL.cockpitEdge);
+  shipMcol(pc, 1, 12, PAL.cockpitEdge);
+
+  // --- Quad thruster bank ---
+  shipMcol(pc, 1, 27, PAL.thruster);
+  shipMcol(pc, 5, 27, PAL.thruster);
+  shipMcol(pc, 1, 28, PAL.thrusterHot);
+  shipMcol(pc, 5, 28, PAL.thrusterHot);
 
   if (thrusting) {
-    // Flickery flame plume below thrusters.
-    const flameLegend = { "t": PAL.thruster, "f": PAL.thrusterHot, "h": PAL.cockpit };
-    const flame = [
-      "......t.t..t.t..",
-      ".....tftftftft..",
-      "......fhfhfhf...",
-      ".......ththt....",
-      "........t.t.....",
-    ];
-    pc.stamp(4, 23, flame, flameLegend);
+    // Flickery flame plume blasting out of both thruster pairs. Each pair
+    // (dx≈1 and dx≈5) tapers from a hot core to a cooler tongue.
+    for (const cx of [1, 5]) {
+      shipMcol(pc, cx, 29, PAL.thrusterHot);
+      shipMcol(pc, cx, 30, PAL.thrusterHot);
+      shipMcol(pc, cx, 31, PAL.cockpit);
+      shipMcol(pc, cx, 32, PAL.cockpitEdge);
+    }
   }
   pc.registerTexture(scene, key);
 }

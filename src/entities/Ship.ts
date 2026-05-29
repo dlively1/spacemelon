@@ -13,8 +13,10 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
     scene.physics.add.existing(this);
     this.setScale(2);
     this.setCollideWorldBounds(true);
+    // Collision box wraps the fuselage + wings of the 28x34 sprite, leaving the
+    // nose tip, cannon tips, and thruster plume as forgiving margin.
     const body = this.body as Phaser.Physics.Arcade.Body;
-    body.setSize(20, 22).setOffset(2, 4);
+    body.setSize(22, 22).setOffset(3, 6);
   }
 
   setThrust(on: boolean): void {
