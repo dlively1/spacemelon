@@ -52,11 +52,14 @@ jobs:
       - name: Run tests
         run: pnpm test
 
-      - name: Upload test artifacts
+      # Browsable HTML report with the per-world + game-over screenshots the
+      # suite captures, plus traces/videos for any failures. Uploaded on every
+      # run so reviewers can eyeball the art on green PRs too.
+      - name: Upload Playwright report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-results
-          path: test-results/
+          name: playwright-report
+          path: playwright-report/
           retention-days: 7
           if-no-files-found: ignore
