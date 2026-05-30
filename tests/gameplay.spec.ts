@@ -1,6 +1,7 @@
 import { test, expect } from "@playwright/test";
 import {
   bootGame,
+  events,
   snapshot,
   sweepFire,
   waitForEvent,
@@ -115,7 +116,7 @@ test("level 3 spawns a megamelon and it takes multiple hits to break", async ({ 
   );
 });
 
-test("pressing space on game-over restarts at level 1", async ({ page }, testInfo) => {
+test("game-over locks out input briefly, then ENTER restarts at level 1", async ({ page }, testInfo) => {
   test.setTimeout(60_000);
   // L2 — steer UP into the spawn stream so the death is deterministic (see the
   // ship-dies test for why an idle ship no longer reliably dies).
@@ -125,14 +126,21 @@ test("pressing space on game-over restarts at level 1", async ({ page }, testInf
   const over = await waitForEvent(page, "game-over", 45_000);
   await page.keyboard.up("ArrowUp");
 
+  // Mashing SPACE (the fire key) right after death must NOT restart — the
+  // input lock guards against an accidental insta-restart. Assert this before
+  // the (slow) screenshot below so the lock window is still open.
+  await page.keyboard.press("Space");
+  await page.waitForTimeout(200);
+  const restarted = (await events(page)).some((e) => e.type === "restart" && e.t > over.t);
+  expect(restarted).toBe(false);
+
   // Capture the game-over panel for visual review.
-  await page.waitForTimeout(300);
   const shot = await page.screenshot();
   await testInfo.attach("game-over.png", { body: shot, contentType: "image/png" });
 
-  // SPACE on game-over should fire a `restart` event and then a fresh
-  // `level-start` for level 1.
-  await page.keyboard.press("Space");
+  // After the lock window, ENTER fires a `restart` and a fresh L1 `level-start`.
+  await page.waitForTimeout(1200);
+  await page.keyboard.press("Enter");
   const restart = await waitForEventAfter(page, "restart", over.t, 5_000);
   expect(restart.t).toBeGreaterThan(over.t);
 
