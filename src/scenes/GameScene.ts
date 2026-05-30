@@ -11,6 +11,7 @@ import { loadBestScore, saveBestScore } from "../agent/highscore";
 import { buildBackground, worldForLevel, type WorldDef } from "../worlds/worlds";
 import { tuningForLevel, type LevelTuning } from "../levels/levels";
 import { sfx } from "../audio/sfx";
+import { Controls } from "../input/Controls";
 
 const STARTING_LIVES = 3;
 const MEGA_SHATTER_COUNT = 6;
@@ -37,6 +38,12 @@ export class GameScene extends Phaser.Scene {
   private fireKey!: Phaser.Input.Keyboard.Key;
   private pauseKey!: Phaser.Input.Keyboard.Key;
   private muteKey!: Phaser.Input.Keyboard.Key;
+  // ENTER/ESC are polled with JustDown on the game-over screen so the keyboard
+  // path matches the gamepad's rising-edge confirm/back.
+  private enterKey!: Phaser.Input.Keyboard.Key;
+  private escKey!: Phaser.Input.Keyboard.Key;
+  private controls!: Controls;
+  private audioKicked = false;
 
   private rng!: Rng;
   private cfg!: AgentConfig;
@@ -54,6 +61,8 @@ export class GameScene extends Phaser.Scene {
   private megaCueIdx = 0;
   private gameOverActive = false;
   private gameOverHint?: Phaser.GameObjects.Text;
+  // Restart input is ignored until this scene-clock time after game over.
+  private gameOverUnlockAt = 0;
   private levelTransitioning = false;
   private stars: Phaser.GameObjects.Image[] = [];
   private bgContainer!: Phaser.GameObjects.Container;
@@ -78,6 +87,8 @@ export class GameScene extends Phaser.Scene {
     this.lives = STARTING_LIVES;
     this.killedTotal = 0;
     this.gameOverActive = false;
+    this.gameOverUnlockAt = 0;
+    this.audioKicked = false;
 
     const bus = getEventBus();
     bus.emit({ type: "scene", t: this.time.now, name: "game" });
@@ -127,6 +138,19 @@ export class GameScene extends Phaser.Scene {
     this.pauseKey.on("down", () => this.togglePause());
     this.muteKey = this.input.keyboard!.addKey("M");
     this.muteKey.on("down", () => sfx.setMuted(!sfx.isMuted()));
+    this.enterKey = this.input.keyboard!.addKey("ENTER");
+    this.escKey = this.input.keyboard!.addKey("ESC");
+
+    this.controls = new Controls(this);
+    // Pause is bound to the gamepad's own event (not the update() poll) so it
+    // can also *un*pause: Phaser halts scene update() while paused, but plugin
+    // events still fire. Mirrors how the keyboard P key uses an event.
+    this.input.gamepad?.on(
+      "down",
+      (_pad: Phaser.Input.Gamepad.Gamepad, button: Phaser.Input.Gamepad.Button) => {
+        if (button.index === 9) this.togglePause(); // Options / Start
+      },
+    );
 
     // First user gesture in the gameplay scene — kick the AudioContext awake.
     sfx.setMuted(this.cfg.muted);
@@ -281,11 +305,28 @@ export class GameScene extends Phaser.Scene {
   }
 
   update(time: number, delta: number): void {
-    const left = this.cursors.left?.isDown || this.keyA.isDown || this.input$.left;
-    const right = this.cursors.right?.isDown || this.keyD.isDown || this.input$.right;
-    const up = this.cursors.up?.isDown || this.keyW.isDown;
-    const down = this.cursors.down?.isDown || this.keyS.isDown;
-    const firing = this.fireKey.isDown || this.input$.fire;
+    this.controls.update();
+
+    // First gamepad button is a best-effort AudioContext wake-up. The keyboard /
+    // pointer paths in create() remain primary, since browsers may not treat a
+    // pad press as a user-activation gesture. sfx.resume() no-ops if it can't.
+    if (!this.audioKicked && this.controls.anyButtonPressed()) {
+      this.audioKicked = true;
+      sfx.resume();
+    }
+
+    if (this.gameOverActive) {
+      this.handleGameOverInput();
+      return;
+    }
+
+    if (this.controls.mutePressed()) sfx.setMuted(!sfx.isMuted());
+
+    const left = this.cursors.left?.isDown || this.keyA.isDown || this.input$.left || this.controls.left;
+    const right = this.cursors.right?.isDown || this.keyD.isDown || this.input$.right || this.controls.right;
+    const up = this.cursors.up?.isDown || this.keyW.isDown || this.controls.up;
+    const down = this.cursors.down?.isDown || this.keyS.isDown || this.controls.down;
+    const firing = this.fireKey.isDown || this.input$.fire || this.controls.fire;
 
     const body = this.ship.body as Phaser.Physics.Arcade.Body;
     body.setVelocity(0);
@@ -609,15 +650,30 @@ export class GameScene extends Phaser.Scene {
     panel.setAlpha(0);
     this.tweens.add({ targets: panel, alpha: 1, duration: 250 });
 
-    // Lock out all input briefly so the spacebar a player is mashing to fire
-    // doesn't instantly restart the run. After the delay, ENTER (or SPACE)
-    // restarts and ESC returns to the menu. The hint reveals once unlocked.
-    this.time.delayedCall(RESTART_LOCK_MS, () => {
-      this.input.keyboard?.once("keydown-ENTER", () => this.restart());
-      this.input.keyboard?.once("keydown-SPACE", () => this.restart());
-      this.input.keyboard?.once("keydown-ESC", () => this.scene.start("menu"));
-      this.gameOverHint?.setVisible(true);
-    });
+    // Lock out restart input briefly so a mashed fire key (SPACE) — or a held
+    // gamepad fire button — doesn't instantly restart the run. handleGameOverInput()
+    // polls for a *fresh* press past this time; the hint reveals once unlocked.
+    this.gameOverUnlockAt = this.time.now + RESTART_LOCK_MS;
+    this.time.delayedCall(RESTART_LOCK_MS, () => this.gameOverHint?.setVisible(true));
+  }
+
+  // Polled on the game-over screen (update() still runs — gameOver() pauses
+  // physics, not the scene). Rising-edge confirm/back across both keyboard and
+  // gamepad, so a button held across the death can't auto-restart even after
+  // the lock window. ENTER/SPACE/✕ restart; ESC/● return to the menu.
+  private handleGameOverInput(): void {
+    if (this.time.now < this.gameOverUnlockAt) return;
+    const confirm =
+      this.controls.confirmPressed() ||
+      Phaser.Input.Keyboard.JustDown(this.enterKey) ||
+      Phaser.Input.Keyboard.JustDown(this.fireKey);
+    if (confirm) {
+      this.restart();
+      return;
+    }
+    if (this.controls.backPressed() || Phaser.Input.Keyboard.JustDown(this.escKey)) {
+      this.scene.start("menu");
+    }
   }
 
   private buildGameOverPanel(opts: { newBest: boolean; bestScore: number }): Phaser.GameObjects.Container {
