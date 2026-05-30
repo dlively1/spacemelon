@@ -12,6 +12,7 @@ import { buildBackground, worldForLevel, type WorldDef } from "../worlds/worlds"
 import { tuningForLevel, type LevelTuning } from "../levels/levels";
 import { sfx } from "../audio/sfx";
 import { Controls } from "../input/Controls";
+import { MONO_FONT } from "../ui/text";
 
 const STARTING_LIVES = 3;
 const MEGA_SHATTER_COUNT = 6;
@@ -198,7 +199,7 @@ export class GameScene extends Phaser.Scene {
     const { width, height } = this.scale;
     const banner = this.add
       .text(width / 2, height / 2, `LEVEL ${level}\n${this.world.name.toUpperCase()}`, {
-        fontFamily: "Courier New, monospace",
+        fontFamily: MONO_FONT,
         fontSize: "28px",
         align: "center",
         color: "#fff0a8",
@@ -702,7 +703,7 @@ export class GameScene extends Phaser.Scene {
     for (const l of lines) {
       const t = this.add
         .text(0, l.y, l.text, {
-          fontFamily: "Courier New, monospace",
+          fontFamily: MONO_FONT,
           fontSize: `${l.size}px`,
           color: l.color,
           ...(l.stroke ? { stroke: l.stroke, strokeThickness: 3 } : {}),
@@ -714,7 +715,7 @@ export class GameScene extends Phaser.Scene {
     if (opts.newBest) {
       const badge = this.add
         .text(0, 50, "★  NEW BEST  ★", {
-          fontFamily: "Courier New, monospace",
+          fontFamily: MONO_FONT,
           fontSize: "16px",
           color: "#fff0a8",
           stroke: "#ff9d3a",
@@ -733,7 +734,7 @@ export class GameScene extends Phaser.Scene {
     } else {
       const best = this.add
         .text(0, 50, `${label("BEST")}${fmt(opts.bestScore)}`, {
-          fontFamily: "Courier New, monospace",
+          fontFamily: MONO_FONT,
           fontSize: "14px",
           color: "#b8eaff",
         })
@@ -743,7 +744,7 @@ export class GameScene extends Phaser.Scene {
 
     const hint = this.add
       .text(0, 96, "ENTER  RESTART      ESC  MENU", {
-        fontFamily: "Courier New, monospace",
+        fontFamily: MONO_FONT,
         fontSize: "11px",
         color: "#6ac3ff",
       })

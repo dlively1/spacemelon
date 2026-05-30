@@ -5,6 +5,7 @@ import { buildBackground, worldForLevel } from "../worlds/worlds";
 import { readAgentConfig } from "../agent/config";
 import { loadBestScore } from "../agent/highscore";
 import { Controls } from "../input/Controls";
+import { MONO_FONT } from "../ui/text";
 
 export class MenuScene extends Phaser.Scene {
   private controls!: Controls;
@@ -27,7 +28,7 @@ export class MenuScene extends Phaser.Scene {
     const { width, height } = this.scale;
     this.add
       .text(width / 2, height / 2 - 80, "SPACEMELONS", {
-        fontFamily: "Courier New, monospace",
+        fontFamily: MONO_FONT,
         fontSize: "48px",
         color: "#fff0a8",
         stroke: "#9b3aff",
@@ -36,7 +37,7 @@ export class MenuScene extends Phaser.Scene {
       .setOrigin(0.5);
     this.add
       .text(width / 2, height / 2 - 30, "BLAST THE WATERMELONS", {
-        fontFamily: "Courier New, monospace",
+        fontFamily: MONO_FONT,
         fontSize: "16px",
         color: "#ff7bd1",
       })
@@ -45,7 +46,7 @@ export class MenuScene extends Phaser.Scene {
     if (best > 0) {
       this.add
         .text(width / 2, height / 2 + 8, `BEST  ${best.toString().padStart(6, "0")}`, {
-          fontFamily: "Courier New, monospace",
+          fontFamily: MONO_FONT,
           fontSize: "13px",
           color: "#b8eaff",
         })
@@ -53,7 +54,7 @@ export class MenuScene extends Phaser.Scene {
     }
     const prompt = this.add
       .text(width / 2, height / 2 + 60, "PRESS  SPACE  TO  START", {
-        fontFamily: "Courier New, monospace",
+        fontFamily: MONO_FONT,
         fontSize: "14px",
         color: "#b8eaff",
       })
@@ -67,7 +68,7 @@ export class MenuScene extends Phaser.Scene {
     });
     this.add
       .text(width / 2, height - 30, "Arrows / WASD / Pad to move  ·  Space / ✕ to fire", {
-        fontFamily: "Courier New, monospace",
+        fontFamily: MONO_FONT,
         fontSize: "11px",
         color: "#6ac3ff",
       })
