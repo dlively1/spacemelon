@@ -423,13 +423,27 @@ export class GameScene extends Phaser.Scene {
     sfx.play("fire");
   }
 
+  /**
+   * Apply a score delta — positive award or negative penalty — flooring the
+   * total at 0, then broadcast the new score to the event bus, snapshot, and
+   * HUD. Returns the delta actually applied, which is smaller in magnitude than
+   * `delta` when the score floors at 0 (used to report the real escape penalty).
+   */
+  private addScore(delta: number): number {
+    const before = this.score;
+    this.score = Math.max(0, this.score + delta);
+    this.bus.emit({ type: "score", t: this.time.now, score: this.score });
+    this.bus.updateSnapshot({ score: this.score });
+    this.gameHud.setScore(this.score);
+    return this.score - before;
+  }
+
   private onBulletHitMelon(bullet: Phaser.Physics.Arcade.Sprite, melon: Watermelon): void {
     bullet.disableBody(true, true);
-    const bus = this.bus;
     const wasMega = melon.mega;
     const destroyed = melon.takeHit();
 
-    bus.emit({
+    this.bus.emit({
       type: "hit",
       t: this.time.now,
       targetId: melon.meloId,
@@ -438,20 +452,16 @@ export class GameScene extends Phaser.Scene {
       mega: wasMega,
     });
 
-    let award: number;
     if (!destroyed) {
       // Non-killing hit (only possible for megas right now).
-      award = SCORE_MEGA_HIT;
-      this.score += award;
-      this.gameHud.popScore(melon.x, melon.y, award);
-      bus.emit({ type: "score", t: this.time.now, score: this.score });
-      bus.updateSnapshot({ score: this.score });
-      this.gameHud.setScore(this.score);
+      this.addScore(SCORE_MEGA_HIT);
+      this.gameHud.popScore(melon.x, melon.y, SCORE_MEGA_HIT);
       sfx.play("megaHit");
       return;
     }
 
     // Destroyed this frame.
+    let award: number;
     if (wasMega) {
       award = SCORE_MEGA_DESTROY;
       this.cameras.main.shake(140, 0.008);
@@ -462,10 +472,7 @@ export class GameScene extends Phaser.Scene {
       this.killedTotal++;
       sfx.play("hit");
     }
-    this.score += award;
-    bus.emit({ type: "score", t: this.time.now, score: this.score });
-    bus.updateSnapshot({ score: this.score });
-    this.gameHud.setScore(this.score);
+    this.addScore(award);
     this.gameHud.popScore(melon.x, melon.y, award);
     this.spawnExplosion(melon.x, melon.y, wasMega ? 2 : 1);
     if (wasMega) this.shatterIntoSmallMelons(melon.x, melon.y);
@@ -506,21 +513,15 @@ export class GameScene extends Phaser.Scene {
   private onMelonEscaped(melon: Watermelon): void {
     if (this.gameOverActive) return;
     const penalty = melon.mega ? SCORE_MEGA_ESCAPE : SCORE_SMALL_ESCAPE;
-    const before = this.score;
-    this.score = Math.max(0, this.score + penalty);
-    const applied = this.score - before; // negative or zero (if floored)
+    const applied = this.addScore(penalty); // negative, or 0 if the score floored
 
-    const bus = this.bus;
-    bus.emit({
+    this.bus.emit({
       type: "escape",
       t: this.time.now,
       targetId: melon.meloId,
       mega: melon.mega,
       penalty: applied,
     });
-    bus.emit({ type: "score", t: this.time.now, score: this.score });
-    bus.updateSnapshot({ score: this.score });
-    this.gameHud.setScore(this.score);
     // Show the penalty popup at the bottom edge where the melon escaped.
     if (applied < 0) {
       const x = Phaser.Math.Clamp(melon.x, 24, this.scale.width - 24);
