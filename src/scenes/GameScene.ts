@@ -4,7 +4,7 @@ import { Watermelon } from "../entities/Watermelon";
 import { TEX } from "../art/sprites";
 import { Rng } from "../agent/rng";
 import { readAgentConfig, type AgentConfig } from "../agent/config";
-import { getEventBus } from "../agent/events";
+import { getEventBus, type EventBus } from "../agent/events";
 import { DebugHud } from "../agent/hud";
 import { GameHud } from "../ui/GameHud";
 import { loadBestScore, saveBestScore } from "../agent/highscore";
@@ -48,6 +48,7 @@ export class GameScene extends Phaser.Scene {
 
   private rng!: Rng;
   private cfg!: AgentConfig;
+  private bus!: EventBus;
   private hud!: DebugHud;
   private gameHud!: GameHud;
   private level = 1;
@@ -91,7 +92,8 @@ export class GameScene extends Phaser.Scene {
     this.gameOverUnlockAt = 0;
     this.audioKicked = false;
 
-    const bus = getEventBus();
+    this.bus = getEventBus();
+    const bus = this.bus;
     bus.emit({ type: "scene", t: this.time.now, name: "game" });
     bus.updateSnapshot({
       scene: "game",
@@ -190,7 +192,7 @@ export class GameScene extends Phaser.Scene {
     this.bgContainer = bg.container;
     this.stars = bg.stars;
 
-    const bus = getEventBus();
+    const bus = this.bus;
     bus.emit({ type: "level-start", t: this.time.now, level, world: this.world.id });
     bus.updateSnapshot({ level, world: this.world.id });
     sfx.play("levelStart");
@@ -293,7 +295,7 @@ export class GameScene extends Phaser.Scene {
       mega: opts.mega,
       hp: opts.mega ? t.megaHp : 1,
     });
-    getEventBus().emit({
+    this.bus.emit({
       type: "spawn",
       t: this.time.now,
       kind: "watermelon",
@@ -423,7 +425,7 @@ export class GameScene extends Phaser.Scene {
 
   private onBulletHitMelon(bullet: Phaser.Physics.Arcade.Sprite, melon: Watermelon): void {
     bullet.disableBody(true, true);
-    const bus = getEventBus();
+    const bus = this.bus;
     const wasMega = melon.mega;
     const destroyed = melon.takeHit();
 
@@ -488,7 +490,7 @@ export class GameScene extends Phaser.Scene {
         pathPattern: "straight",
       });
       this.melons.add(m);
-      getEventBus().emit({
+      this.bus.emit({
         type: "spawn",
         t: this.time.now,
         kind: "watermelon",
@@ -508,7 +510,7 @@ export class GameScene extends Phaser.Scene {
     this.score = Math.max(0, this.score + penalty);
     const applied = this.score - before; // negative or zero (if floored)
 
-    const bus = getEventBus();
+    const bus = this.bus;
     bus.emit({
       type: "escape",
       t: this.time.now,
@@ -534,7 +536,7 @@ export class GameScene extends Phaser.Scene {
     this.spawnExplosion(melon.x, melon.y);
     melon.destroy();
     this.lives -= 1;
-    const bus = getEventBus();
+    const bus = this.bus;
     bus.emit({ type: "lives", t: this.time.now, lives: this.lives });
     bus.updateSnapshot({ lives: this.lives });
     this.gameHud.setLives(this.lives);
@@ -613,7 +615,7 @@ export class GameScene extends Phaser.Scene {
 
   private advanceLevel(): void {
     this.levelTransitioning = true;
-    const bus = getEventBus();
+    const bus = this.bus;
     bus.emit({ type: "level-clear", t: this.time.now, level: this.level });
     sfx.play("levelClear");
     // Clear remaining melons.
@@ -630,7 +632,7 @@ export class GameScene extends Phaser.Scene {
     const newBest = saveBestScore(this.score);
     const bestScore = Math.max(prevBest, this.score);
 
-    const bus = getEventBus();
+    const bus = this.bus;
     bus.emit({
       type: "game-over",
       t: this.time.now,
@@ -764,7 +766,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private restart(): void {
-    const bus = getEventBus();
+    const bus = this.bus;
     bus.emit({ type: "restart", t: this.time.now });
     sfx.play("restart");
     // Always restart from level 1, regardless of URL startLevel.
@@ -772,7 +774,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private togglePause(): void {
-    const bus = getEventBus();
+    const bus = this.bus;
     if (this.scene.isPaused()) {
       this.scene.resume();
       bus.updateSnapshot({ paused: false });

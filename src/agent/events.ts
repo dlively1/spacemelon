@@ -56,7 +56,7 @@ declare global {
 
 const MAX_EVENTS = 2000;
 
-class EventBus {
+export class EventBus {
   private bridge: GameBridge;
   private listeners = new Set<(e: GameEvent) => void>();
   private snapshotListeners = new Set<(s: GameSnapshot) => void>();
