@@ -103,9 +103,8 @@ export class GameScene extends Phaser.Scene {
       bestScore: loadBestScore(),
     });
 
-    const bg = buildBackground(this, this.world, this.rng);
-    this.bgContainer = bg.container;
-    this.stars = bg.stars;
+    // The background is built by startLevel() below (and rebuilt on every
+    // level), so there's no need to construct one here.
 
     const { width, height } = this.scale;
     this.ship = new Ship(this, width / 2, height - 80);
@@ -186,8 +185,9 @@ export class GameScene extends Phaser.Scene {
     this.megaCueIdx = 0;
     this.levelTransitioning = false;
 
-    // Rebuild background for the new world.
-    this.bgContainer.destroy(true);
+    // (Re)build the background for the new world. On the first level the
+    // container doesn't exist yet, hence the optional chain.
+    this.bgContainer?.destroy(true);
     const bg = buildBackground(this, this.world, this.rng);
     this.bgContainer = bg.container;
     this.stars = bg.stars;
