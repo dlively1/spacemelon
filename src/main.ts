@@ -29,6 +29,9 @@ const config: Phaser.Types.Core.GameConfig = {
     height: 640,
   },
   backgroundColor: "#05030a",
+  // Enable Phaser's Gamepad plugin (W3C Gamepad API) so scenes can read a
+  // DualShock / USB arcade encoder via `this.input.gamepad`. Off by default.
+  input: { gamepad: true },
   physics: {
     default: "arcade",
     arcade: {

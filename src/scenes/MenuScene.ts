@@ -4,8 +4,11 @@ import { Rng } from "../agent/rng";
 import { buildBackground, worldForLevel } from "../worlds/worlds";
 import { readAgentConfig } from "../agent/config";
 import { loadBestScore } from "../agent/highscore";
+import { Controls } from "../input/Controls";
 
 export class MenuScene extends Phaser.Scene {
+  private controls!: Controls;
+
   constructor() {
     super("menu");
   }
@@ -63,13 +66,14 @@ export class MenuScene extends Phaser.Scene {
       repeat: -1,
     });
     this.add
-      .text(width / 2, height - 30, "Arrows / WASD to move  ·  Space to fire", {
+      .text(width / 2, height - 30, "Arrows / WASD / Pad to move  ·  Space / ✕ to fire", {
         fontFamily: "Courier New, monospace",
         fontSize: "11px",
         color: "#6ac3ff",
       })
       .setOrigin(0.5);
 
+    this.controls = new Controls(this);
     this.input.keyboard?.once("keydown-SPACE", () => this.startGame());
     this.input.keyboard?.once("keydown-ENTER", () => this.startGame());
 
@@ -77,6 +81,13 @@ export class MenuScene extends Phaser.Scene {
     if (cfg.autoplay) {
       this.time.delayedCall(100, () => this.startGame());
     }
+  }
+
+  update(): void {
+    // Gamepad confirm (✕ / Options) starts the game. Keyboard SPACE/ENTER are
+    // handled by the once() listeners above; the autoplay path is unaffected.
+    this.controls.update();
+    if (this.controls.confirmPressed()) this.startGame();
   }
 
   private startGame(): void {

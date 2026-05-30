@@ -47,12 +47,14 @@ src/
     GameHud.ts            Always-on lives + score overlay (separate from agent/hud.ts dev HUD)
   audio/
     sfx.ts                Singleton WebAudio synth — procedural retro blips (no asset binaries)
+  input/
+    Controls.ts           Gamepad reads (DualShock / USB arcade) + pure gamepadIntent() mapping
   entities/
     Ship.ts               Player ship (Arcade Sprite)
     Watermelon.ts         Spinning watermelon enemy (small or mega, with HP + path patterns)
   scenes/
     BootScene.ts          Generate textures, emit `boot`, → menu
-    MenuScene.ts          Title screen; SPACE/ENTER → game (or autoplay)
+    MenuScene.ts          Title screen; SPACE/ENTER/pad → game (or autoplay)
     GameScene.ts          Gameplay loop, levels, world swap, scoring
 tests/
   helpers/gameClient.ts   Typed wrappers around the bridge for Playwright
@@ -168,6 +170,15 @@ When iterating on gameplay or visuals:
 - **New input action:** extend the `input` object in `GameBridge` (in
   `agent/events.ts`), bind it in `GameScene.create`, and expose a helper from
   `gameClient.ts`.
+- **Gamepad / arcade controls:** `input: { gamepad: true }` is on in `main.ts`.
+  `src/input/Controls.ts` reads the first connected pad and merges held-intent
+  (`left/right/up/down/fire`) with the keyboard + agent bridge in each scene's
+  `update()`; discrete actions use rising-edge helpers (`confirmPressed`,
+  `backPressed`, `mutePressed`). Pause is bound to the pad's `"down"` event (not
+  the poll loop) so it survives a paused scene. The button→action map lives in
+  the pure `gamepadIntent()` — change mappings there. Gamepad is purely additive
+  and inert headless, so the bridge + Playwright suite are unaffected.
+  Keyboard-emulating arcade encoders work via the existing WASD/arrows+space.
 - **New sound:** add a `SfxName` variant + a `case` in `play()` inside
   `src/audio/sfx.ts` (use `tone()` for melodic blips, `noiseBurst()` for booms).
   Trigger via `sfx.play("name")` from gameplay code. Always-safe — `sfx` no-ops
