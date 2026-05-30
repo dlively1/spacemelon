@@ -118,7 +118,10 @@ export class GameHud {
   }
 
   setVisible(v: boolean): void {
-    for (const icon of this.lifeIcons) icon.setVisible(v && this.lifeIcons.indexOf(icon) < this.lives);
+    // A life icon only shows when the HUD is visible AND that slot is still
+    // filled; use the loop index rather than indexOf (which rescanned the
+    // array on every icon).
+    this.lifeIcons.forEach((icon, i) => icon.setVisible(v && i < this.lives));
     this.scoreLabel.setVisible(v);
     this.scoreText.setVisible(v);
   }
