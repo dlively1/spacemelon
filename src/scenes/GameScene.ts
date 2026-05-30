@@ -21,6 +21,9 @@ const SCORE_MEGA_DESTROY = 500;
 // Score floors at 0 so a bad run can't go negative.
 const SCORE_SMALL_ESCAPE = -50;
 const SCORE_MEGA_ESCAPE = -200;
+// Ignore restart input for this long after game over so a mashed fire key
+// (SPACE) doesn't immediately kick off a fresh run.
+const RESTART_LOCK_MS = 1000;
 
 export class GameScene extends Phaser.Scene {
   private ship!: Ship;
@@ -50,6 +53,7 @@ export class GameScene extends Phaser.Scene {
   // Megamelon cues consumed by index as kill count advances.
   private megaCueIdx = 0;
   private gameOverActive = false;
+  private gameOverHint?: Phaser.GameObjects.Text;
   private levelTransitioning = false;
   private stars: Phaser.GameObjects.Image[] = [];
   private bgContainer!: Phaser.GameObjects.Container;
@@ -605,8 +609,15 @@ export class GameScene extends Phaser.Scene {
     panel.setAlpha(0);
     this.tweens.add({ targets: panel, alpha: 1, duration: 250 });
 
-    this.input.keyboard?.once("keydown-SPACE", () => this.restart());
-    this.input.keyboard?.once("keydown-ESC", () => this.scene.start("menu"));
+    // Lock out all input briefly so the spacebar a player is mashing to fire
+    // doesn't instantly restart the run. After the delay, ENTER (or SPACE)
+    // restarts and ESC returns to the menu. The hint reveals once unlocked.
+    this.time.delayedCall(RESTART_LOCK_MS, () => {
+      this.input.keyboard?.once("keydown-ENTER", () => this.restart());
+      this.input.keyboard?.once("keydown-SPACE", () => this.restart());
+      this.input.keyboard?.once("keydown-ESC", () => this.scene.start("menu"));
+      this.gameOverHint?.setVisible(true);
+    });
   }
 
   private buildGameOverPanel(opts: { newBest: boolean; bestScore: number }): Phaser.GameObjects.Container {
@@ -675,13 +686,15 @@ export class GameScene extends Phaser.Scene {
     }
 
     const hint = this.add
-      .text(0, 96, "SPACE  RESTART      ESC  MENU", {
+      .text(0, 96, "ENTER  RESTART      ESC  MENU", {
         fontFamily: "Courier New, monospace",
         fontSize: "11px",
         color: "#6ac3ff",
       })
-      .setOrigin(0.5);
+      .setOrigin(0.5)
+      .setVisible(false);
     container.add(hint);
+    this.gameOverHint = hint;
     this.tweens.add({
       targets: hint,
       alpha: { from: 1, to: 0.35 },
