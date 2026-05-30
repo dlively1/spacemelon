@@ -4,7 +4,7 @@ import { Watermelon } from "../entities/Watermelon";
 import { TEX } from "../art/sprites";
 import { Rng } from "../agent/rng";
 import { readAgentConfig, type AgentConfig } from "../agent/config";
-import { getEventBus } from "../agent/events";
+import { getEventBus, type EventBus } from "../agent/events";
 import { DebugHud } from "../agent/hud";
 import { GameHud } from "../ui/GameHud";
 import { loadBestScore, saveBestScore } from "../agent/highscore";
@@ -12,6 +12,7 @@ import { buildBackground, worldForLevel, type WorldDef } from "../worlds/worlds"
 import { tuningForLevel, type LevelTuning } from "../levels/levels";
 import { sfx } from "../audio/sfx";
 import { Controls } from "../input/Controls";
+import { MONO_FONT } from "../ui/text";
 
 const STARTING_LIVES = 3;
 const MEGA_SHATTER_COUNT = 6;
@@ -47,6 +48,7 @@ export class GameScene extends Phaser.Scene {
 
   private rng!: Rng;
   private cfg!: AgentConfig;
+  private bus!: EventBus;
   private hud!: DebugHud;
   private gameHud!: GameHud;
   private level = 1;
@@ -90,7 +92,8 @@ export class GameScene extends Phaser.Scene {
     this.gameOverUnlockAt = 0;
     this.audioKicked = false;
 
-    const bus = getEventBus();
+    this.bus = getEventBus();
+    const bus = this.bus;
     bus.emit({ type: "scene", t: this.time.now, name: "game" });
     bus.updateSnapshot({
       scene: "game",
@@ -100,9 +103,8 @@ export class GameScene extends Phaser.Scene {
       bestScore: loadBestScore(),
     });
 
-    const bg = buildBackground(this, this.world, this.rng);
-    this.bgContainer = bg.container;
-    this.stars = bg.stars;
+    // The background is built by startLevel() below (and rebuilt on every
+    // level), so there's no need to construct one here.
 
     const { width, height } = this.scale;
     this.ship = new Ship(this, width / 2, height - 80);
@@ -183,13 +185,14 @@ export class GameScene extends Phaser.Scene {
     this.megaCueIdx = 0;
     this.levelTransitioning = false;
 
-    // Rebuild background for the new world.
-    this.bgContainer.destroy(true);
+    // (Re)build the background for the new world. On the first level the
+    // container doesn't exist yet, hence the optional chain.
+    this.bgContainer?.destroy(true);
     const bg = buildBackground(this, this.world, this.rng);
     this.bgContainer = bg.container;
     this.stars = bg.stars;
 
-    const bus = getEventBus();
+    const bus = this.bus;
     bus.emit({ type: "level-start", t: this.time.now, level, world: this.world.id });
     bus.updateSnapshot({ level, world: this.world.id });
     sfx.play("levelStart");
@@ -198,7 +201,7 @@ export class GameScene extends Phaser.Scene {
     const { width, height } = this.scale;
     const banner = this.add
       .text(width / 2, height / 2, `LEVEL ${level}\n${this.world.name.toUpperCase()}`, {
-        fontFamily: "Courier New, monospace",
+        fontFamily: MONO_FONT,
         fontSize: "28px",
         align: "center",
         color: "#fff0a8",
@@ -292,7 +295,7 @@ export class GameScene extends Phaser.Scene {
       mega: opts.mega,
       hp: opts.mega ? t.megaHp : 1,
     });
-    getEventBus().emit({
+    this.bus.emit({
       type: "spawn",
       t: this.time.now,
       kind: "watermelon",
@@ -420,13 +423,27 @@ export class GameScene extends Phaser.Scene {
     sfx.play("fire");
   }
 
+  /**
+   * Apply a score delta — positive award or negative penalty — flooring the
+   * total at 0, then broadcast the new score to the event bus, snapshot, and
+   * HUD. Returns the delta actually applied, which is smaller in magnitude than
+   * `delta` when the score floors at 0 (used to report the real escape penalty).
+   */
+  private addScore(delta: number): number {
+    const before = this.score;
+    this.score = Math.max(0, this.score + delta);
+    this.bus.emit({ type: "score", t: this.time.now, score: this.score });
+    this.bus.updateSnapshot({ score: this.score });
+    this.gameHud.setScore(this.score);
+    return this.score - before;
+  }
+
   private onBulletHitMelon(bullet: Phaser.Physics.Arcade.Sprite, melon: Watermelon): void {
     bullet.disableBody(true, true);
-    const bus = getEventBus();
     const wasMega = melon.mega;
     const destroyed = melon.takeHit();
 
-    bus.emit({
+    this.bus.emit({
       type: "hit",
       t: this.time.now,
       targetId: melon.meloId,
@@ -435,20 +452,16 @@ export class GameScene extends Phaser.Scene {
       mega: wasMega,
     });
 
-    let award: number;
     if (!destroyed) {
       // Non-killing hit (only possible for megas right now).
-      award = SCORE_MEGA_HIT;
-      this.score += award;
-      this.gameHud.popScore(melon.x, melon.y, award);
-      bus.emit({ type: "score", t: this.time.now, score: this.score });
-      bus.updateSnapshot({ score: this.score });
-      this.gameHud.setScore(this.score);
+      this.addScore(SCORE_MEGA_HIT);
+      this.gameHud.popScore(melon.x, melon.y, SCORE_MEGA_HIT);
       sfx.play("megaHit");
       return;
     }
 
     // Destroyed this frame.
+    let award: number;
     if (wasMega) {
       award = SCORE_MEGA_DESTROY;
       this.cameras.main.shake(140, 0.008);
@@ -459,10 +472,7 @@ export class GameScene extends Phaser.Scene {
       this.killedTotal++;
       sfx.play("hit");
     }
-    this.score += award;
-    bus.emit({ type: "score", t: this.time.now, score: this.score });
-    bus.updateSnapshot({ score: this.score });
-    this.gameHud.setScore(this.score);
+    this.addScore(award);
     this.gameHud.popScore(melon.x, melon.y, award);
     this.spawnExplosion(melon.x, melon.y, wasMega ? 2 : 1);
     if (wasMega) this.shatterIntoSmallMelons(melon.x, melon.y);
@@ -487,7 +497,7 @@ export class GameScene extends Phaser.Scene {
         pathPattern: "straight",
       });
       this.melons.add(m);
-      getEventBus().emit({
+      this.bus.emit({
         type: "spawn",
         t: this.time.now,
         kind: "watermelon",
@@ -503,21 +513,15 @@ export class GameScene extends Phaser.Scene {
   private onMelonEscaped(melon: Watermelon): void {
     if (this.gameOverActive) return;
     const penalty = melon.mega ? SCORE_MEGA_ESCAPE : SCORE_SMALL_ESCAPE;
-    const before = this.score;
-    this.score = Math.max(0, this.score + penalty);
-    const applied = this.score - before; // negative or zero (if floored)
+    const applied = this.addScore(penalty); // negative, or 0 if the score floored
 
-    const bus = getEventBus();
-    bus.emit({
+    this.bus.emit({
       type: "escape",
       t: this.time.now,
       targetId: melon.meloId,
       mega: melon.mega,
       penalty: applied,
     });
-    bus.emit({ type: "score", t: this.time.now, score: this.score });
-    bus.updateSnapshot({ score: this.score });
-    this.gameHud.setScore(this.score);
     // Show the penalty popup at the bottom edge where the melon escaped.
     if (applied < 0) {
       const x = Phaser.Math.Clamp(melon.x, 24, this.scale.width - 24);
@@ -533,7 +537,7 @@ export class GameScene extends Phaser.Scene {
     this.spawnExplosion(melon.x, melon.y);
     melon.destroy();
     this.lives -= 1;
-    const bus = getEventBus();
+    const bus = this.bus;
     bus.emit({ type: "lives", t: this.time.now, lives: this.lives });
     bus.updateSnapshot({ lives: this.lives });
     this.gameHud.setLives(this.lives);
@@ -612,7 +616,7 @@ export class GameScene extends Phaser.Scene {
 
   private advanceLevel(): void {
     this.levelTransitioning = true;
-    const bus = getEventBus();
+    const bus = this.bus;
     bus.emit({ type: "level-clear", t: this.time.now, level: this.level });
     sfx.play("levelClear");
     // Clear remaining melons.
@@ -629,7 +633,7 @@ export class GameScene extends Phaser.Scene {
     const newBest = saveBestScore(this.score);
     const bestScore = Math.max(prevBest, this.score);
 
-    const bus = getEventBus();
+    const bus = this.bus;
     bus.emit({
       type: "game-over",
       t: this.time.now,
@@ -702,7 +706,7 @@ export class GameScene extends Phaser.Scene {
     for (const l of lines) {
       const t = this.add
         .text(0, l.y, l.text, {
-          fontFamily: "Courier New, monospace",
+          fontFamily: MONO_FONT,
           fontSize: `${l.size}px`,
           color: l.color,
           ...(l.stroke ? { stroke: l.stroke, strokeThickness: 3 } : {}),
@@ -714,7 +718,7 @@ export class GameScene extends Phaser.Scene {
     if (opts.newBest) {
       const badge = this.add
         .text(0, 50, "★  NEW BEST  ★", {
-          fontFamily: "Courier New, monospace",
+          fontFamily: MONO_FONT,
           fontSize: "16px",
           color: "#fff0a8",
           stroke: "#ff9d3a",
@@ -733,7 +737,7 @@ export class GameScene extends Phaser.Scene {
     } else {
       const best = this.add
         .text(0, 50, `${label("BEST")}${fmt(opts.bestScore)}`, {
-          fontFamily: "Courier New, monospace",
+          fontFamily: MONO_FONT,
           fontSize: "14px",
           color: "#b8eaff",
         })
@@ -743,7 +747,7 @@ export class GameScene extends Phaser.Scene {
 
     const hint = this.add
       .text(0, 96, "ENTER  RESTART      ESC  MENU", {
-        fontFamily: "Courier New, monospace",
+        fontFamily: MONO_FONT,
         fontSize: "11px",
         color: "#6ac3ff",
       })
@@ -763,7 +767,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private restart(): void {
-    const bus = getEventBus();
+    const bus = this.bus;
     bus.emit({ type: "restart", t: this.time.now });
     sfx.play("restart");
     // Always restart from level 1, regardless of URL startLevel.
@@ -771,7 +775,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private togglePause(): void {
-    const bus = getEventBus();
+    const bus = this.bus;
     if (this.scene.isPaused()) {
       this.scene.resume();
       bus.updateSnapshot({ paused: false });

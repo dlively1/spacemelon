@@ -1,5 +1,6 @@
 import Phaser from "phaser";
 import { TEX } from "../art/sprites";
+import { MONO_FONT } from "./text";
 
 const DEPTH = 9000;
 const LIFE_X = 12;
@@ -39,7 +40,7 @@ export class GameHud {
     const { width } = scene.scale;
     this.scoreLabel = scene.add
       .text(width - 12, 10, "SCORE", {
-        fontFamily: "Courier New, monospace",
+        fontFamily: MONO_FONT,
         fontSize: "10px",
         color: "#b8eaff",
       })
@@ -48,7 +49,7 @@ export class GameHud {
       .setDepth(DEPTH);
     this.scoreText = scene.add
       .text(width - 12, 22, formatScore(opts.score), {
-        fontFamily: "Courier New, monospace",
+        fontFamily: MONO_FONT,
         fontSize: "20px",
         color: "#fff0a8",
         stroke: "#9b3aff",
@@ -98,7 +99,7 @@ export class GameHud {
     const label = positive ? `+${amount}` : `${amount}`; // negative already has '-'
     const text = this.scene.add
       .text(x, y, label, {
-        fontFamily: "Courier New, monospace",
+        fontFamily: MONO_FONT,
         fontSize: "14px",
         color: positive ? "#fff0a8" : "#ff5577",
         stroke: positive ? "#9b3aff" : "#3a0010",
@@ -117,7 +118,10 @@ export class GameHud {
   }
 
   setVisible(v: boolean): void {
-    for (const icon of this.lifeIcons) icon.setVisible(v && this.lifeIcons.indexOf(icon) < this.lives);
+    // A life icon only shows when the HUD is visible AND that slot is still
+    // filled; use the loop index rather than indexOf (which rescanned the
+    // array on every icon).
+    this.lifeIcons.forEach((icon, i) => icon.setVisible(v && i < this.lives));
     this.scoreLabel.setVisible(v);
     this.scoreText.setVisible(v);
   }

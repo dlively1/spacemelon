@@ -1,5 +1,6 @@
 import Phaser from "phaser";
 import { getEventBus } from "./events";
+import { MONO_FONT } from "../ui/text";
 
 export class DebugHud {
   private text: Phaser.GameObjects.Text;
@@ -9,7 +10,7 @@ export class DebugHud {
   constructor(scene: Phaser.Scene) {
     this.text = scene.add
       .text(8, 8, "", {
-        fontFamily: "Courier New, monospace",
+        fontFamily: MONO_FONT,
         fontSize: "12px",
         color: "#9fffd9",
         backgroundColor: "rgba(0,0,0,0.45)",
