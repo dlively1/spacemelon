@@ -484,6 +484,7 @@ export class GameScene extends Phaser.Scene {
 
   private onShipHitMelon(melon: Watermelon): void {
     if (this.cfg.invincible || this.gameOverActive) return;
+    if (this.ship.isInvincible(this.time.now)) return;
     this.spawnExplosion(melon.x, melon.y);
     melon.destroy();
     this.lives -= 1;
@@ -493,6 +494,21 @@ export class GameScene extends Phaser.Scene {
     this.gameHud.setLives(this.lives);
     this.cameras.main.shake(180, 0.01);
     sfx.play("shipHit");
+
+    // Brief invincibility window so a single hit can't immediately cascade.
+    const iFrameMs = 1500;
+    this.ship.startInvincibility(this.time.now, iFrameMs);
+    this.tweens.killTweensOf(this.ship);
+    this.tweens.add({
+      targets: this.ship,
+      alpha: 0.15,
+      duration: 110,
+      yoyo: true,
+      repeat: Math.round(iFrameMs / 220) - 1,
+      ease: "Linear",
+      onComplete: () => this.ship.setAlpha(1),
+    });
+
     if (this.lives <= 0) this.gameOver();
   }
 
