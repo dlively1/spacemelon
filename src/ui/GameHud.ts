@@ -1,7 +1,15 @@
 import Phaser from "phaser";
 import { TEX } from "../art/sprites";
+import type { AbilityType } from "../entities/Pickup";
 
 const DEPTH = 9000;
+
+const ABILITY_META: Record<AbilityType, { label: string; tex: string; color: string }> = {
+  multiLaser: { label: "MULTI-LASER", tex: TEX.powerLaser, color: "#ffe14d" },
+  areaBlast: { label: "AREA-BLAST", tex: TEX.powerBomb, color: "#ffe14d" },
+};
+
+const ABILITY_BAR_W = 96;
 const LIFE_X = 12;
 const LIFE_Y = 12;
 const LIFE_SPACING = 22;
@@ -21,6 +29,11 @@ export class GameHud {
   private scoreText: Phaser.GameObjects.Text;
   private lives = 0;
   private capacity: number;
+  // Active-ability badge (top-center). Built lazily on first setAbility.
+  private abilityContainer: Phaser.GameObjects.Container | null = null;
+  private abilityIcon: Phaser.GameObjects.Image | null = null;
+  private abilityLabel: Phaser.GameObjects.Text | null = null;
+  private abilityBar: Phaser.GameObjects.Rectangle | null = null;
 
   constructor(scene: Phaser.Scene, opts: { lives: number; score: number } = { lives: 3, score: 0 }) {
     this.scene = scene;
@@ -90,6 +103,54 @@ export class GameHud {
     this.scoreText.setText(formatScore(n));
   }
 
+  // Show (or update) the active-ability badge at top-center: pickup icon,
+  // ability name, and a full timer bar that drains via updateAbilityTimer.
+  setAbility(type: AbilityType): void {
+    const meta = ABILITY_META[type];
+    const { width } = this.scene.scale;
+    const cx = width / 2;
+
+    if (!this.abilityContainer) {
+      this.abilityContainer = this.scene.add
+        .container(cx, 44)
+        .setScrollFactor(0)
+        .setDepth(DEPTH);
+      this.abilityIcon = this.scene.add.image(-ABILITY_BAR_W / 2 - 12, 0, meta.tex).setScale(1.5);
+      this.abilityLabel = this.scene.add
+        .text(0, -10, meta.label, {
+          fontFamily: "Courier New, monospace",
+          fontSize: "11px",
+          color: meta.color,
+          stroke: "#3a2606",
+          strokeThickness: 3,
+        })
+        .setOrigin(0.5, 0.5);
+      const track = this.scene.add
+        .rectangle(0, 8, ABILITY_BAR_W, 5, 0x3a2606, 0.85)
+        .setOrigin(0.5, 0.5)
+        .setStrokeStyle(1, 0xf2b81f, 1);
+      this.abilityBar = this.scene.add
+        .rectangle(-ABILITY_BAR_W / 2, 8, ABILITY_BAR_W, 5, 0xffe14d, 1)
+        .setOrigin(0, 0.5);
+      this.abilityContainer.add([this.abilityIcon, this.abilityLabel, track, this.abilityBar]);
+    } else {
+      this.abilityIcon!.setTexture(meta.tex);
+      this.abilityLabel!.setText(meta.label).setColor(meta.color);
+    }
+    this.abilityContainer.setVisible(true);
+    this.updateAbilityTimer(1);
+  }
+
+  // frac01 = remaining fraction of the ability duration (1 → full, 0 → expired).
+  updateAbilityTimer(frac01: number): void {
+    if (!this.abilityBar) return;
+    this.abilityBar.scaleX = Phaser.Math.Clamp(frac01, 0, 1);
+  }
+
+  clearAbility(): void {
+    this.abilityContainer?.setVisible(false);
+  }
+
   // Floats "+amount" / "-amount" up from (x,y) and fades out. Positive uses
   // the warm score color; negative (escape penalty) uses a hot red so the
   // player notices the punishment.
@@ -120,11 +181,13 @@ export class GameHud {
     for (const icon of this.lifeIcons) icon.setVisible(v && this.lifeIcons.indexOf(icon) < this.lives);
     this.scoreLabel.setVisible(v);
     this.scoreText.setVisible(v);
+    if (!v) this.abilityContainer?.setVisible(false);
   }
 
   destroy(): void {
     for (const icon of this.lifeIcons) icon.destroy();
     this.scoreLabel.destroy();
     this.scoreText.destroy();
+    this.abilityContainer?.destroy(true);
   }
 }

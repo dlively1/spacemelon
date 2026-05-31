@@ -1,6 +1,8 @@
 // Event bridge exposed on `window.__SPACEMELON` so Playwright (or any browser-
 // side agent) can observe gameplay state without scraping pixels.
 
+import type { AbilityType } from "../entities/Pickup";
+
 export type GameEvent =
   | { type: "boot"; t: number }
   | { type: "scene"; t: number; name: string }
@@ -13,6 +15,9 @@ export type GameEvent =
   | { type: "lives"; t: number; lives: number }
   | { type: "game-over"; t: number; score: number; level: number; killedTotal: number; newBest: boolean; bestScore: number }
   | { type: "restart"; t: number }
+  | { type: "powerup-spawn"; t: number; id: number; x: number; y: number; ability: AbilityType }
+  | { type: "powerup-collect"; t: number; id: number; ability: AbilityType }
+  | { type: "powerup-expire"; t: number; ability: AbilityType }
   | { type: "frame"; t: number; fps: number; entities: number };
 
 export interface GameSnapshot {
@@ -27,6 +32,8 @@ export interface GameSnapshot {
   entities: number;
   seed: number;
   paused: boolean;
+  // Currently-active special ability (from a power-up cylinder), or null.
+  ability: AbilityType | null;
 }
 
 export interface GameBridge {
@@ -77,6 +84,7 @@ class EventBus {
         entities: 0,
         seed,
         paused: false,
+        ability: null,
       },
       input: {
         left: () => {},

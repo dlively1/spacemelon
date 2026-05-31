@@ -116,6 +116,51 @@ test("level 3 spawns a megamelon and it takes multiple hits to break", async ({ 
   );
 });
 
+test("no power-up cylinders drop before level 3", async ({ page }) => {
+  test.setTimeout(30_000);
+  // L1 tuning has powerupDropChance: 0 — special abilities are a mid-game
+  // escalation, so no cylinders should ever drop here no matter how many
+  // melons we destroy.
+  await bootGame(page, { seed: 7, level: 1, autoplay: true, invincible: true });
+  await waitForEvent(page, "level-start");
+  await sweepFire(page, 9_000).catch(() => {});
+  const evs = await events(page);
+  const drops = evs.filter((e) => e.type === "powerup-spawn");
+  expect(drops).toHaveLength(0);
+  // Sanity: we did actually destroy melons during the sweep.
+  expect(evs.some((e) => e.type === "hit")).toBe(true);
+});
+
+test("level 3 drops a cylinder that the ship can collect for an ability", async ({ page }) => {
+  test.setTimeout(120_000);
+  await bootGame(page, { seed: 0x5AFE, level: 3, autoplay: true, invincible: true });
+  await waitForEvent(page, "level-start");
+
+  // Pin the ship against the right wall (collideWorldBounds gives it a stable
+  // x) and hold fire. Bullets travel straight up, so a melon killed above the
+  // ship spawns its cylinder at ~the ship's x — and since cylinders fall
+  // straight down, it drops right back onto the stationary ship. That makes a
+  // self-catch deterministic without needing the ship's exact coordinates.
+  await page.evaluate(() => {
+    window.__SPACEMELON?.input.right(true);
+    window.__SPACEMELON?.input.fire(true);
+  });
+
+  const spawn = await waitForEvent(page, "powerup-spawn", 90_000);
+  expect(["multiLaser", "areaBlast"]).toContain(spawn.ability);
+
+  const collect = await waitForEvent(page, "powerup-collect", 30_000);
+  expect(["multiLaser", "areaBlast"]).toContain(collect.ability);
+
+  await page.evaluate(() => {
+    window.__SPACEMELON?.input.right(false);
+    window.__SPACEMELON?.input.fire(false);
+  });
+
+  const snap = await snapshot(page);
+  expect(snap.ability).toBe(collect.ability);
+});
+
 test("game-over locks out input briefly, then ENTER restarts at level 1", async ({ page }, testInfo) => {
   test.setTimeout(60_000);
   // L2 — steer UP into the spawn stream so the death is deterministic (see the
