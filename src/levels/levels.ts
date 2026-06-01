@@ -28,6 +28,11 @@ export interface LevelTuning {
   // Mega cues: when to drop a megamelon. Each mega has its own HP.
   megaSchedule: MegaSpawnCue[];
   megaHp: number;
+  // Chance (0..1) that a destroyed melon drops a power-up cylinder. 0 before
+  // level 3 — special abilities are a mid-game escalation.
+  powerupDropChance: number;
+  // Downward drift speed (px/s) of dropped cylinders. Fast = hard to catch.
+  powerupFallSpeed: number;
 }
 
 // Tuning rationale:
@@ -53,6 +58,8 @@ export const LEVELS: LevelTuning[] = [
     toClear: 8,
     megaSchedule: [],
     megaHp: 4,
+    powerupDropChance: 0,
+    powerupFallSpeed: 300,
   },
   {
     spawnDelayMs: 760,
@@ -67,6 +74,8 @@ export const LEVELS: LevelTuning[] = [
     toClear: 12,
     megaSchedule: [],
     megaHp: 4,
+    powerupDropChance: 0,
+    powerupFallSpeed: 300,
   },
   {
     spawnDelayMs: 700,
@@ -81,6 +90,8 @@ export const LEVELS: LevelTuning[] = [
     toClear: 14,
     megaSchedule: [{ atKill: 6 }],
     megaHp: 4,
+    powerupDropChance: 0.06,
+    powerupFallSpeed: 300,
   },
   {
     spawnDelayMs: 600,
@@ -95,6 +106,8 @@ export const LEVELS: LevelTuning[] = [
     toClear: 18,
     megaSchedule: [{ atKill: 5 }, { atKill: 13 }],
     megaHp: 5,
+    powerupDropChance: 0.07,
+    powerupFallSpeed: 320,
   },
   {
     spawnDelayMs: 500,
@@ -109,6 +122,8 @@ export const LEVELS: LevelTuning[] = [
     toClear: 22,
     megaSchedule: [{ atKill: 4 }, { atKill: 11 }, { atKill: 18 }],
     megaHp: 6,
+    powerupDropChance: 0.08,
+    powerupFallSpeed: 340,
   },
 ];
 
@@ -135,5 +150,7 @@ export function tuningForLevel(level: number): LevelTuning {
     toClear: base.toClear + extra * 2,
     megaSchedule: [...base.megaSchedule, ...extraMegas],
     megaHp: base.megaHp + Math.floor(extra / 2),
+    powerupDropChance: Math.min(0.12, base.powerupDropChance + extra * 0.005),
+    powerupFallSpeed: base.powerupFallSpeed + extra * 8,
   };
 }

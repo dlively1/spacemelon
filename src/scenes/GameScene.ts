@@ -1,6 +1,7 @@
 import Phaser from "phaser";
 import { Ship } from "../entities/Ship";
 import { Watermelon } from "../entities/Watermelon";
+import { Pickup, type AbilityType } from "../entities/Pickup";
 import { TEX } from "../art/sprites";
 import { Rng } from "../agent/rng";
 import { readAgentConfig, type AgentConfig } from "../agent/config";
@@ -24,11 +25,16 @@ const SCORE_MEGA_ESCAPE = -200;
 // Ignore restart input for this long after game over so a mashed fire key
 // (SPACE) doesn't immediately kick off a fresh run.
 const RESTART_LOCK_MS = 1000;
+// How long a collected special ability stays active.
+const ABILITY_DURATION_MS = 8000;
+// Radius (px) of an area-blast detonation.
+const AREA_BLAST_RADIUS = 110;
 
 export class GameScene extends Phaser.Scene {
   private ship!: Ship;
   private bullets!: Phaser.Physics.Arcade.Group;
   private melons!: Phaser.Physics.Arcade.Group;
+  private pickups!: Phaser.Physics.Arcade.Group;
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private keyA!: Phaser.Input.Keyboard.Key;
   private keyD!: Phaser.Input.Keyboard.Key;
@@ -55,6 +61,9 @@ export class GameScene extends Phaser.Scene {
   private gameOverActive = false;
   private gameOverHint?: Phaser.GameObjects.Text;
   private levelTransitioning = false;
+  // Active special ability from a collected power-up cylinder.
+  private activeAbility: AbilityType | null = null;
+  private abilityExpiresAt = 0;
   private stars: Phaser.GameObjects.Image[] = [];
   private bgContainer!: Phaser.GameObjects.Container;
   private input$ = { left: false, right: false, up: false, down: false, fire: false };
@@ -78,6 +87,8 @@ export class GameScene extends Phaser.Scene {
     this.lives = STARTING_LIVES;
     this.killedTotal = 0;
     this.gameOverActive = false;
+    this.activeAbility = null;
+    this.abilityExpiresAt = 0;
 
     const bus = getEventBus();
     bus.emit({ type: "scene", t: this.time.now, name: "game" });
@@ -102,6 +113,7 @@ export class GameScene extends Phaser.Scene {
       runChildUpdate: false,
     });
     this.melons = this.physics.add.group({ classType: Watermelon, runChildUpdate: true });
+    this.pickups = this.physics.add.group({ classType: Pickup, runChildUpdate: true });
 
     this.physics.add.overlap(this.bullets, this.melons, (b, m) => {
       const melon = m as Watermelon;
@@ -115,6 +127,9 @@ export class GameScene extends Phaser.Scene {
       const melon = m as Watermelon;
       if (!melon.isVulnerable()) return;
       this.onShipHitMelon(melon);
+    });
+    this.physics.add.overlap(this.ship, this.pickups, (_s, p) => {
+      this.onShipGrabPickup(p as Pickup);
     });
 
     this.cursors = this.input.keyboard!.createCursorKeys();
@@ -344,6 +359,33 @@ export class GameScene extends Phaser.Scene {
     for (const m of escaped) this.onMelonEscaped(m);
     for (const m of culled) m.destroy();
 
+    // Expire the active ability and drain its HUD timer.
+    if (this.activeAbility) {
+      if (time >= this.abilityExpiresAt) {
+        const expired = this.activeAbility;
+        this.activeAbility = null;
+        const bus = getEventBus();
+        bus.emit({ type: "powerup-expire", t: this.time.now, ability: expired });
+        bus.updateSnapshot({ ability: null });
+        this.gameHud.clearAbility();
+      } else {
+        const remaining = (this.abilityExpiresAt - time) / ABILITY_DURATION_MS;
+        this.gameHud.updateAbilityTimer(remaining);
+      }
+    }
+
+    // Cull cylinders that drifted off-screen — a missed power-up just vanishes.
+    const deadPickups: Pickup[] = [];
+    this.pickups.children.iterate((obj) => {
+      const p = obj as Pickup | undefined;
+      if (!p || !p.active) return true;
+      if (p.y > this.scale.height + 30 || p.x < -40 || p.x > this.scale.width + 40) {
+        deadPickups.push(p);
+      }
+      return true;
+    });
+    for (const p of deadPickups) p.destroy();
+
     // Unstick: spawn cap exhausted and no melons remain — the level can never
     // be cleared through kills, so advance anyway.
     if (
@@ -360,27 +402,59 @@ export class GameScene extends Phaser.Scene {
       world: this.world.id,
       score: this.score,
       lives: this.lives,
-      entities: this.melons.getLength() + this.bullets.countActive(true),
+      entities:
+        this.melons.getLength() + this.bullets.countActive(true) + this.pickups.getLength(),
     });
 
   }
 
   private fireBullet(): void {
+    switch (this.activeAbility) {
+      case "multiLaser":
+        // 3-way spread: straight up plus two angled lanes.
+        this.spawnBullet(0, -560);
+        this.spawnBullet(-150, -540);
+        this.spawnBullet(150, -540);
+        break;
+      case "areaBlast":
+        // A single explosive round that detonates on impact.
+        this.spawnBullet(0, -560, true);
+        break;
+      default:
+        this.spawnBullet(0, -560);
+        break;
+    }
+    sfx.play("fire");
+  }
+
+  /** Pull a bullet from the pool, launch it, and tag it explosive if needed. */
+  private spawnBullet(vx: number, vy: number, explosive = false): void {
     const b = this.bullets.get(this.ship.x, this.ship.y - 24, TEX.bullet) as Phaser.Physics.Arcade.Sprite | null;
     if (!b) return;
     b.setActive(true).setVisible(true);
     b.setScale(2);
+    // Tint explosive rounds yellow so the area-blast ability reads on-screen.
+    if (explosive) b.setTint(0xffe14d);
+    else b.clearTint();
+    b.setData("explosive", explosive);
     if (!b.body) this.physics.add.existing(b);
     const body = b.body as Phaser.Physics.Arcade.Body;
     body.enable = true;
     body.setAllowGravity(false);
     body.setSize(6, 14).setOffset(0, 0);
-    body.setVelocity(0, -560);
-    sfx.play("fire");
+    body.setVelocity(vx, vy);
   }
 
   private onBulletHitMelon(bullet: Phaser.Physics.Arcade.Sprite, melon: Watermelon): void {
+    const explosive = bullet.getData("explosive") === true;
     bullet.disableBody(true, true);
+
+    // Area-blast rounds detonate where they land and damage everything nearby.
+    if (explosive) {
+      this.areaBlastAt(melon.x, melon.y);
+      return;
+    }
+
     const bus = getEventBus();
     const wasMega = melon.mega;
     const destroyed = melon.takeHit();
@@ -394,12 +468,10 @@ export class GameScene extends Phaser.Scene {
       mega: wasMega,
     });
 
-    let award: number;
     if (!destroyed) {
       // Non-killing hit (only possible for megas right now).
-      award = SCORE_MEGA_HIT;
-      this.score += award;
-      this.gameHud.popScore(melon.x, melon.y, award);
+      this.score += SCORE_MEGA_HIT;
+      this.gameHud.popScore(melon.x, melon.y, SCORE_MEGA_HIT);
       bus.emit({ type: "score", t: this.time.now, score: this.score });
       bus.updateSnapshot({ score: this.score });
       this.gameHud.setScore(this.score);
@@ -407,7 +479,17 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    // Destroyed this frame.
+    this.killMelon(melon);
+  }
+
+  /** Resolve a melon that was destroyed this frame: score, FX, shatter, drops. */
+  private killMelon(melon: Watermelon): void {
+    const bus = getEventBus();
+    const wasMega = melon.mega;
+    const x = melon.x;
+    const y = melon.y;
+
+    let award: number;
     if (wasMega) {
       award = SCORE_MEGA_DESTROY;
       this.cameras.main.shake(140, 0.008);
@@ -422,13 +504,75 @@ export class GameScene extends Phaser.Scene {
     bus.emit({ type: "score", t: this.time.now, score: this.score });
     bus.updateSnapshot({ score: this.score });
     this.gameHud.setScore(this.score);
-    this.gameHud.popScore(melon.x, melon.y, award);
-    this.spawnExplosion(melon.x, melon.y, wasMega ? 2 : 1);
-    if (wasMega) this.shatterIntoSmallMelons(melon.x, melon.y);
+    this.gameHud.popScore(x, y, award);
+    this.spawnExplosion(x, y, wasMega ? 2 : 1);
+    if (wasMega) this.shatterIntoSmallMelons(x, y);
     melon.destroy();
+
+    // Chance to drop a power-up cylinder (0 before level 3).
+    if (this.rng.next() < this.tuning.powerupDropChance) this.spawnPickup(x, y);
 
     this.maybeSpawnScheduledMega();
     if (this.killedThisLevel >= this.tuning.toClear) this.advanceLevel();
+  }
+
+  /** Detonate an area blast: destroy/damage every vulnerable melon in radius. */
+  private areaBlastAt(x: number, y: number): void {
+    this.spawnExplosion(x, y, 3);
+    this.cameras.main.shake(200, 0.012);
+    sfx.play("bomb");
+
+    const bus = getEventBus();
+    // Collect first, act after — destroying melons mid-iterate shifts the group.
+    const killed: Watermelon[] = [];
+    this.melons.children.iterate((obj) => {
+      const m = obj as Watermelon | undefined;
+      if (!m || !m.active || !m.isVulnerable()) return true;
+      if (Phaser.Math.Distance.Between(x, y, m.x, m.y) > AREA_BLAST_RADIUS) return true;
+      const destroyed = m.takeHit();
+      bus.emit({
+        type: "hit",
+        t: this.time.now,
+        targetId: m.meloId,
+        kind: "watermelon",
+        destroyed,
+        mega: m.mega,
+      });
+      if (destroyed) killed.push(m);
+      return true;
+    });
+    for (const m of killed) this.killMelon(m);
+  }
+
+  /** Spawn a power-up cylinder that drifts straight down from (x, y). */
+  private spawnPickup(x: number, y: number): void {
+    const ability: AbilityType = this.rng.next() < 0.5 ? "multiLaser" : "areaBlast";
+    const p = new Pickup(this, x, y, { ability, vy: this.tuning.powerupFallSpeed });
+    this.pickups.add(p);
+    getEventBus().emit({
+      type: "powerup-spawn",
+      t: this.time.now,
+      id: p.pickupId,
+      x,
+      y,
+      ability,
+    });
+  }
+
+  /** Ship caught a cylinder — grant its ability for a fixed duration. */
+  private onShipGrabPickup(pickup: Pickup): void {
+    const ability = pickup.ability;
+    const id = pickup.pickupId;
+    pickup.destroy();
+
+    this.activeAbility = ability;
+    this.abilityExpiresAt = this.time.now + ABILITY_DURATION_MS;
+    sfx.play("powerup");
+    this.gameHud.setAbility(ability);
+
+    const bus = getEventBus();
+    bus.emit({ type: "powerup-collect", t: this.time.now, id, ability });
+    bus.updateSnapshot({ ability });
   }
 
   /** A killed megamelon bursts into a ring of small melons. */
@@ -574,8 +718,9 @@ export class GameScene extends Phaser.Scene {
     const bus = getEventBus();
     bus.emit({ type: "level-clear", t: this.time.now, level: this.level });
     sfx.play("levelClear");
-    // Clear remaining melons.
+    // Clear remaining melons + uncollected cylinders.
     this.melons.clear(true, true);
+    this.pickups.clear(true, true);
     this.time.removeAllEvents();
     this.time.delayedCall(800, () => this.startLevel(this.level + 1));
   }

@@ -15,7 +15,9 @@ export type SfxName =
   | "levelStart"
   | "levelClear"
   | "gameOver"
-  | "restart";
+  | "restart"
+  | "powerup"
+  | "bomb";
 
 type Wave = OscillatorType;
 
@@ -208,6 +210,17 @@ class Sfx {
           break;
         case "restart":
           this.tone({ freq: 660, endFreq: 1320, wave: "square", duration: 0.18, volume: 0.12 }, now);
+          break;
+        case "powerup":
+          // Bright rising power-up chime — "you got something good".
+          this.tone({ freq: 660, wave: "square", duration: 0.08, volume: 0.12 }, now);
+          this.tone({ freq: 990, wave: "square", duration: 0.08, volume: 0.12 }, now + 0.08);
+          this.tone({ freq: 1320, endFreq: 1760, wave: "square", duration: 0.16, volume: 0.14 }, now + 0.16);
+          break;
+        case "bomb":
+          // Heavy area-blast detonation — deep sweep + long noise.
+          this.tone({ freq: 180, endFreq: 40, wave: "sawtooth", duration: 0.45, volume: 0.22 }, now);
+          this.noiseBurst(0.4, 0.22, now, 700);
           break;
       }
     } catch {

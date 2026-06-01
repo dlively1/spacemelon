@@ -12,6 +12,8 @@ export const TEX = {
   starBig: "tex:starBig",
   shockwave: "tex:shockwave",
   seed: "tex:seed",
+  powerLaser: "tex:power:laser", // glowing green cylinder — multi-laser ability
+  powerBomb: "tex:power:bomb",   // glowing green cylinder — area-blast ability
 } as const;
 
 // 28x30 ship — "Twin-Fang Cruiser": a beefy Galaga gunship. Central fuselage
@@ -198,6 +200,65 @@ function drawWatermelon(scene: Phaser.Scene): void {
   });
 }
 
+// 12x18 glowing-yellow power-up cylinder. A vertical capsule with a bright core
+// highlight stripe; an inner dark glyph signals which ability it grants
+// (vertical bars = multi-laser, a burst = area-blast). Yellow keeps them clearly
+// distinct from the green watermelons; the glyph distinguishes the two abilities.
+function drawPowerCylinder(scene: Phaser.Scene, key: string, glyph: "laser" | "bomb"): void {
+  const pc = new PixelCanvas(12, 18);
+  const legend = {
+    "e": PAL.powerEdge,
+    "m": PAL.powerMid,
+    "l": PAL.powerLight,
+    "c": PAL.powerCore,
+    "g": PAL.powerGlyph,
+  };
+  // Rounded capsule body with a vertical core-light stripe.
+  const base = [
+    "...eeee...",
+    "..emmmme..",
+    ".emmllmme.",
+    ".emlcclme.",
+    "emmlcclmme",
+    "emmlcclmme",
+    "emmlcclmme",
+    "emmlcclmme",
+    "emmlcclmme",
+    "emmlcclmme",
+    "emmlcclmme",
+    "emmlcclmme",
+    "emmlcclmme",
+    ".emlcclme.",
+    ".emmllmme.",
+    "..emmmme..",
+    "...eeee...",
+  ];
+  pc.stamp(1, 0, base, legend);
+
+  // Inner glyph overlaid on the body center.
+  if (glyph === "laser") {
+    // Three short vertical bars.
+    const bars = [
+      "g.g.g",
+      "g.g.g",
+      "g.g.g",
+      "g.g.g",
+    ];
+    pc.stamp(4, 7, bars, legend);
+  } else {
+    // Radiating burst (star).
+    const burst = [
+      "..g..",
+      "g.g.g",
+      ".ggg.",
+      "g.g.g",
+      "..g..",
+    ];
+    pc.stamp(4, 6, burst, legend);
+  }
+  pc.registerTexture(scene, key);
+}
+
 function drawStars(scene: Phaser.Scene): void {
   // Small star: 1px white.
   const small = new PixelCanvas(2, 2);
@@ -270,4 +331,6 @@ export function generateAllSprites(scene: Phaser.Scene): void {
   drawStars(scene);
   drawShockwave(scene);
   drawSeed(scene);
+  drawPowerCylinder(scene, TEX.powerLaser, "laser");
+  drawPowerCylinder(scene, TEX.powerBomb, "bomb");
 }

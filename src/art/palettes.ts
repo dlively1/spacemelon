@@ -28,6 +28,13 @@ export const PAL = {
   bulletGlow: 0xff7bd1,
   bulletEdge: 0x9b3aff,
 
+  // Power-up cylinder (glowing yellow capsule — distinct from green melons)
+  powerCore: 0xfffce0,    // bright near-white core highlight
+  powerLight: 0xffe14d,   // bright yellow body
+  powerMid: 0xf2b81f,     // golden mid
+  powerEdge: 0x7a5310,    // dark amber rim
+  powerGlyph: 0x3a2606,   // inner glyph (laser bars / bomb burst)
+
   // FX
   shockwave: 0xfff0a8,
   spark: 0xfff6c2,
