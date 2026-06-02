@@ -142,6 +142,17 @@ Prefer these helpers — they keep tests readable and centralize bridge churn.
 - **Tests should boot fresh per scenario.** `bootGame(page, opts)` re-navigates
   with new URL params, which is the supported way to get a clean RNG.
 
+## Branches & pull requests (REQUIRED)
+
+**Never commit directly to `main`.** Every task — features, fixes, art tweaks,
+docs — is executed on its own branch and merged via a pull request.
+
+1. Start from up-to-date `main`: `git fetch origin` and branch off
+   `origin/main` (`git checkout -b <short-kebab-name> origin/main`).
+2. Do the work on that branch and keep commits scoped to the task.
+3. Open a PR with `gh pr create` and leave it for the user's review and
+   approval — do **not** self-merge unless explicitly asked.
+
 ## Closed-loop workflow for agents
 
 When iterating on gameplay or visuals:
