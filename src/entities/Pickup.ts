@@ -16,45 +16,47 @@ const TEX_FOR_ABILITY: Record<AbilityType, string> = {
   areaBlast: TEX.powerBomb,
 };
 
+// Pooled collectible: instances are created by the scene's physics group and
+// reused via spawn()/despawn(). All per-pickup state is assigned in spawn().
 export class Pickup extends Phaser.Physics.Arcade.Sprite {
   static nextId = 1;
 
-  readonly pickupId: number;
-  readonly ability: AbilityType;
+  pickupId = 0;
+  ability: AbilityType = "multiLaser";
 
-  // Spawn velocity, re-asserted on the first preUpdate. Phaser's Arcade Group
-  // zeroes a body's velocity when the sprite is add()'ed (after our constructor
-  // ran), so without this the cylinder would sit frozen. Same trick Watermelon
-  // uses.
-  private launchVy: number;
-  private launched = false;
+  constructor(scene: Phaser.Scene, x: number, y: number) {
+    super(scene, x, y, TEX.powerLaser);
+  }
 
-  constructor(scene: Phaser.Scene, x: number, y: number, opts: PickupOpts) {
-    super(scene, x, y, TEX_FOR_ABILITY[opts.ability]);
-    scene.add.existing(this);
-    scene.physics.add.existing(this);
+  /** (Re)activate this pooled pickup at (x, y). */
+  spawn(x: number, y: number, opts: PickupOpts): this {
+    // enableBody runs after the group added the sprite, so the velocity set
+    // below sticks — no first-update re-assert hack needed.
+    this.enableBody(true, x, y, true, true);
 
-    this.ability = opts.ability;
     this.pickupId = Pickup.nextId++;
+    this.ability = opts.ability;
+    this.setTexture(TEX_FOR_ABILITY[opts.ability]);
     this.setScale(2);
+    this.setRotation(0);
     this.setDepth(40);
 
     const body = this.body as Phaser.Physics.Arcade.Body;
     // Generous-ish circular hitbox so the fast-moving pickup is catchable.
     body.setCircle(6, 0, 3);
-    this.launchVy = opts.vy;
     body.setVelocity(0, opts.vy);
     body.setAllowGravity(false);
+
+    return this;
+  }
+
+  /** Deactivate and return to the pool (does not destroy). */
+  despawn(): void {
+    this.disableBody(true, true);
   }
 
   preUpdate(time: number, delta: number): void {
     super.preUpdate(time, delta);
-
-    const body = this.body as Phaser.Physics.Arcade.Body | null;
-    if (body && !this.launched) {
-      body.setVelocity(0, this.launchVy);
-      this.launched = true;
-    }
 
     // Gentle glint: pulse the scale and slowly spin so it reads as a glowing
     // collectible rather than another enemy.
