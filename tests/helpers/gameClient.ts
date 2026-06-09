@@ -38,17 +38,15 @@ export async function events(page: Page): Promise<GameEvent[]> {
 }
 
 export async function waitForScene(page: Page, name: string, timeoutMs = 8_000): Promise<void> {
-  await page.waitForFunction(
-    (n) => window.__SPACEMELON?.snapshot.scene === n,
-    name,
-    { timeout: timeoutMs }
-  );
+  await page.waitForFunction((n) => window.__SPACEMELON?.snapshot.scene === n, name, {
+    timeout: timeoutMs,
+  });
 }
 
 export async function waitForEvent<T extends GameEvent["type"]>(
   page: Page,
   type: T,
-  timeoutMs = 8_000
+  timeoutMs = 8_000,
 ): Promise<Extract<GameEvent, { type: T }>> {
   const handle = await page.waitForFunction(
     (t) => {
@@ -56,7 +54,7 @@ export async function waitForEvent<T extends GameEvent["type"]>(
       return ev ?? null;
     },
     type,
-    { timeout: timeoutMs }
+    { timeout: timeoutMs },
   );
   return (await handle.jsonValue()) as Extract<GameEvent, { type: T }>;
 }
@@ -67,7 +65,7 @@ export async function waitForEventAfter<T extends GameEvent["type"]>(
   page: Page,
   type: T,
   sinceT: number,
-  timeoutMs = 15_000
+  timeoutMs = 15_000,
 ): Promise<Extract<GameEvent, { type: T }>> {
   const handle = await page.waitForFunction(
     ({ t, since }) => {
@@ -75,7 +73,7 @@ export async function waitForEventAfter<T extends GameEvent["type"]>(
       return ev ?? null;
     },
     { t: type, since: sinceT },
-    { timeout: timeoutMs }
+    { timeout: timeoutMs },
   );
   return (await handle.jsonValue()) as Extract<GameEvent, { type: T }>;
 }
@@ -83,7 +81,7 @@ export async function waitForEventAfter<T extends GameEvent["type"]>(
 export async function hold(
   page: Page,
   control: "left" | "right" | "fire",
-  durationMs: number
+  durationMs: number,
 ): Promise<void> {
   await page.evaluate((c) => window.__SPACEMELON?.input[c](true), control);
   await page.waitForTimeout(durationMs);
@@ -107,10 +105,12 @@ export async function sweepFire(page: Page, durationMs: number, periodMs = 600):
       ({ wasLeft, nowLeft }) => {
         const i = window.__SPACEMELON?.input;
         if (!i) return;
-        if (wasLeft) i.left(false); else i.right(false);
-        if (nowLeft) i.left(true); else i.right(true);
+        if (wasLeft) i.left(false);
+        else i.right(false);
+        if (nowLeft) i.left(true);
+        else i.right(true);
       },
-      { wasLeft, nowLeft: leftDown }
+      { wasLeft, nowLeft: leftDown },
     );
   }
   await page.evaluate(() => {

@@ -43,7 +43,7 @@ test("melons drifting off the bottom emit escape penalties without crashing", as
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(String(e.stack || e)));
 
-  await bootGame(page, { seed: 0xC0FFEE, level: 1, autoplay: true, invincible: true });
+  await bootGame(page, { seed: 0xc0ffee, level: 1, autoplay: true, invincible: true });
   await waitForEvent(page, "level-start");
   const esc = await waitForEvent(page, "escape", 45_000);
   expect(esc.mega).toBe(false);
@@ -68,7 +68,7 @@ test("ship dies after enough hits and the game-over event carries stats", async 
   // dies reliably: melons keep their aimed spawn velocity plus spread, so they
   // sail past a stationary target instead of homing into it. Flying into where
   // melons enter the screen makes draining the 3 lives deterministic.
-  await bootGame(page, { seed: 0xDEAD, level: 2, autoplay: true });
+  await bootGame(page, { seed: 0xdead, level: 2, autoplay: true });
   await waitForEvent(page, "level-start");
   await page.keyboard.down("ArrowUp");
   const over = await waitForEvent(page, "game-over", 45_000);
@@ -94,25 +94,29 @@ test("level 3 spawns a megamelon and it takes multiple hits to break", async ({ 
   sweepFire(page, 100_000).catch(() => {});
 
   const megaSpawn = await page.waitForFunction(
-    () => window.__SPACEMELON?.events.find((e) => e.type === "spawn" && (e as { mega?: boolean }).mega === true) ?? null,
+    () =>
+      window.__SPACEMELON?.events.find(
+        (e) => e.type === "spawn" && (e as { mega?: boolean }).mega === true,
+      ) ?? null,
     undefined,
-    { timeout: 90_000 }
+    { timeout: 90_000 },
   );
-  const ev = await megaSpawn.jsonValue() as { id: number };
+  const ev = (await megaSpawn.jsonValue()) as { id: number };
   expect(ev.id).toBeGreaterThan(0);
 
   // The same megamelon should register at least one non-killing hit before
   // it's destroyed — confirms HP > 1.
   await page.waitForFunction(
     (id) => {
-      const hits = window.__SPACEMELON?.events.filter(
-        (e) => e.type === "hit" && (e as { targetId?: number }).targetId === id
-      ) ?? [];
+      const hits =
+        window.__SPACEMELON?.events.filter(
+          (e) => e.type === "hit" && (e as { targetId?: number }).targetId === id,
+        ) ?? [];
       const survived = hits.some((h) => (h as { destroyed?: boolean }).destroyed === false);
       return survived;
     },
     ev.id,
-    { timeout: 30_000 }
+    { timeout: 30_000 },
   );
 });
 
@@ -133,7 +137,7 @@ test("no power-up cylinders drop before level 3", async ({ page }) => {
 
 test("level 3 drops a cylinder that the ship can collect for an ability", async ({ page }) => {
   test.setTimeout(120_000);
-  await bootGame(page, { seed: 0x5AFE, level: 3, autoplay: true, invincible: true });
+  await bootGame(page, { seed: 0x5afe, level: 3, autoplay: true, invincible: true });
   await waitForEvent(page, "level-start");
 
   // Pin the ship against the right wall (collideWorldBounds gives it a stable
@@ -161,11 +165,13 @@ test("level 3 drops a cylinder that the ship can collect for an ability", async 
   expect(snap.ability).toBe(collect.ability);
 });
 
-test("game-over locks out input briefly, then ENTER restarts at level 1", async ({ page }, testInfo) => {
+test("game-over locks out input briefly, then ENTER restarts at level 1", async ({
+  page,
+}, testInfo) => {
   test.setTimeout(60_000);
   // L2 — steer UP into the spawn stream so the death is deterministic (see the
   // ship-dies test for why an idle ship no longer reliably dies).
-  await bootGame(page, { seed: 0xBEEF, level: 2, autoplay: true });
+  await bootGame(page, { seed: 0xbeef, level: 2, autoplay: true });
   await waitForEvent(page, "level-start");
   await page.keyboard.down("ArrowUp");
   const over = await waitForEvent(page, "game-over", 45_000);

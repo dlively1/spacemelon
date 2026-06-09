@@ -15,6 +15,10 @@ export interface WatermelonOpts {
   pathPattern?: PathPattern;
   // Strength of perpendicular sinusoidal drift for "wave" path (px/s² peak).
   waveAmplitude?: number;
+  // Initial phase (radians) for the "wave" path so coexisting melons don't
+  // oscillate in lockstep. Callers should derive it from the seeded Rng —
+  // gameplay code must stay deterministic (no Math.random()).
+  wavePhase?: number;
 }
 
 const FLASH_TINT = 0xffffff;
@@ -70,8 +74,7 @@ export class Watermelon extends Phaser.Physics.Arcade.Sprite {
     this.maxSpeed = opts.maxSpeed ?? 260;
     this.pathPattern = opts.pathPattern ?? "straight";
     this.waveAmplitude = opts.waveAmplitude ?? 70;
-    // Random phase so coexisting melons don't oscillate in lockstep.
-    this.pathPhase = Math.random() * Math.PI * 2;
+    this.pathPhase = opts.wavePhase ?? 0;
 
     if (this.mega) this.setDepth(50); // draw mega above small melons
   }
@@ -83,10 +86,7 @@ export class Watermelon extends Phaser.Physics.Arcade.Sprite {
     const halfH = this.displayHeight / 2;
     const { width, height } = this.scene.scale;
     const touchingScreen =
-      this.x + halfW > 0 &&
-      this.x - halfW < width &&
-      this.y + halfH > 0 &&
-      this.y - halfH < height;
+      this.x + halfW > 0 && this.x - halfW < width && this.y + halfH > 0 && this.y - halfH < height;
     if (touchingScreen) this.vulnerable = true;
     return this.vulnerable;
   }

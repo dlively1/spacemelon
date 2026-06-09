@@ -20,7 +20,10 @@ export class DebugHud {
       .setDepth(10_000);
   }
 
-  update(scene: Phaser.Scene, info: { level: number; world: string; score: number; lives: number; entities: number }): void {
+  update(
+    scene: Phaser.Scene,
+    info: { level: number; world: string; score: number; lives: number; entities: number },
+  ): void {
     const fps = Math.round(scene.game.loop.actualFps);
     const s = this.bus.snapshot;
     this.text.setText(
@@ -28,7 +31,7 @@ export class DebugHud {
         `SPACEMELON  fps:${fps}  seed:0x${s.seed.toString(16)}`,
         `world:${info.world}  lvl:${info.level}  score:${info.score}  lives:${info.lives}`,
         `entities:${info.entities}`,
-      ].join("\n")
+      ].join("\n"),
     );
     // Throttle frame events to ~4Hz so the buffer stays useful.
     const now = scene.time.now;

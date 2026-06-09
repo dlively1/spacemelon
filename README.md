@@ -12,8 +12,8 @@
 ## What is it?
 
 Spacemelon is a tiny arcade shooter built with **Phaser 3** and **TypeScript**.
-Watermelons spin down through five themed worlds — *Iris Drift, Emerald Belt,
-Crimson Reach, Gold Ring,* and *Void Bloom* — and your job is to shoot them
+Watermelons spin down through five themed worlds — _Iris Drift, Emerald Belt,
+Crimson Reach, Gold Ring,_ and _Void Bloom_ — and your job is to shoot them
 before they drift off the bottom of the screen.
 
 - 🎨 **100% procedural art & audio.** Every sprite and sound is generated in
@@ -26,26 +26,26 @@ before they drift off the bottom of the screen.
 
 ### Scoring
 
-| Action | Points |
-|---|---|
-| Pop a small melon | **+100** |
-| Hit a megamelon | **+50** |
-| Destroy a megamelon | **+500** |
-| Let a small melon escape | **−50** |
-| Let a megamelon escape | **−200** |
+| Action                   | Points   |
+| ------------------------ | -------- |
+| Pop a small melon        | **+100** |
+| Hit a megamelon          | **+50**  |
+| Destroy a megamelon      | **+500** |
+| Let a small melon escape | **−50**  |
+| Let a megamelon escape   | **−200** |
 
 Your score floors at zero — even a rough run can't go negative.
 
 ## Controls
 
-| Key | Action |
-|---|---|
-| `←` / `→` (or `A` / `D`) | Move |
-| `Space` | Fire |
-| `P` | Pause |
-| `M` | Mute / unmute |
-| `Enter` | Start (menu) · Restart (after game over) |
-| `Esc` | Back to menu (after game over) |
+| Key                      | Action                                   |
+| ------------------------ | ---------------------------------------- |
+| `←` / `→` (or `A` / `D`) | Move                                     |
+| `Space`                  | Fire                                     |
+| `P`                      | Pause                                    |
+| `M`                      | Mute / unmute                            |
+| `Enter`                  | Start (menu) · Restart (after game over) |
+| `Esc`                    | Back to menu (after game over)           |
 
 ## Run it locally
 
@@ -74,15 +74,15 @@ a scenario:
 http://localhost:5173/?seed=42&level=4&autoplay=1&invincible=1&debug=1
 ```
 
-| Param | What it does |
-|---|---|
-| `seed` | Seed the deterministic RNG (int or `0xHEX`). |
-| `level` | Start on a specific level / world. |
-| `autoplay` | Skip the menu and start immediately. |
-| `invincible` | Ignore watermelon collisions. |
-| `debug` | Show the FPS/entity HUD + physics debug. |
-| `paused` | Boot paused (handy for screenshots). |
-| `muted` | Start with sound off. |
+| Param        | What it does                                 |
+| ------------ | -------------------------------------------- |
+| `seed`       | Seed the deterministic RNG (int or `0xHEX`). |
+| `level`      | Start on a specific level / world.           |
+| `autoplay`   | Skip the menu and start immediately.         |
+| `invincible` | Ignore watermelon collisions.                |
+| `debug`      | Show the FPS/entity HUD + physics debug.     |
+| `paused`     | Boot paused (handy for screenshots).         |
+| `muted`      | Start with sound off.                        |
 
 ## Tests
 

@@ -35,7 +35,10 @@ export class GameHud {
   private abilityLabel: Phaser.GameObjects.Text | null = null;
   private abilityBar: Phaser.GameObjects.Rectangle | null = null;
 
-  constructor(scene: Phaser.Scene, opts: { lives: number; score: number } = { lives: 3, score: 0 }) {
+  constructor(
+    scene: Phaser.Scene,
+    opts: { lives: number; score: number } = { lives: 3, score: 0 },
+  ) {
     this.scene = scene;
     this.capacity = Math.min(MAX_LIFE_ICONS, Math.max(1, opts.lives));
 
@@ -111,10 +114,7 @@ export class GameHud {
     const cx = width / 2;
 
     if (!this.abilityContainer) {
-      this.abilityContainer = this.scene.add
-        .container(cx, 44)
-        .setScrollFactor(0)
-        .setDepth(DEPTH);
+      this.abilityContainer = this.scene.add.container(cx, 44).setScrollFactor(0).setDepth(DEPTH);
       this.abilityIcon = this.scene.add.image(-ABILITY_BAR_W / 2 - 12, 0, meta.tex).setScale(1.5);
       this.abilityLabel = this.scene.add
         .text(0, -10, meta.label, {
@@ -178,7 +178,8 @@ export class GameHud {
   }
 
   setVisible(v: boolean): void {
-    for (const icon of this.lifeIcons) icon.setVisible(v && this.lifeIcons.indexOf(icon) < this.lives);
+    for (const icon of this.lifeIcons)
+      icon.setVisible(v && this.lifeIcons.indexOf(icon) < this.lives);
     this.scoreLabel.setVisible(v);
     this.scoreText.setVisible(v);
     if (!v) this.abilityContainer?.setVisible(false);

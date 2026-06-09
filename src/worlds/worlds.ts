@@ -61,7 +61,9 @@ const GOLD_RING: WorldDef = {
     const cx = scene.scale.width * 0.85;
     const cy = scene.scale.height * 0.85;
     const planet = scene.add.circle(cx, cy, 60, 0xff9d3a, 0.35);
-    const ring = scene.add.ellipse(cx, cy, 180, 30, 0xfff0a8, 0.25).setStrokeStyle(1, 0xfff0a8, 0.5);
+    const ring = scene.add
+      .ellipse(cx, cy, 180, 30, 0xfff0a8, 0.25)
+      .setStrokeStyle(1, 0xfff0a8, 0.5);
     ring.rotation = -0.4;
     layer.add([planet, ring]);
   },
@@ -90,7 +92,11 @@ export function worldForLevel(level: number): WorldDef {
 
 // Builds a parallax background for the given world. Returns the container so
 // scenes can scroll/animate it.
-export function buildBackground(scene: Phaser.Scene, world: WorldDef, rng: Rng): {
+export function buildBackground(
+  scene: Phaser.Scene,
+  world: WorldDef,
+  rng: Rng,
+): {
   container: Phaser.GameObjects.Container;
   stars: Phaser.GameObjects.Image[];
 } {
@@ -99,7 +105,10 @@ export function buildBackground(scene: Phaser.Scene, world: WorldDef, rng: Rng):
 
   // Vertical gradient (two rects, blend via alpha).
   const top = scene.add.rectangle(0, 0, width, height, world.bgTop).setOrigin(0).setAlpha(1);
-  const bottom = scene.add.rectangle(0, 0, width, height, world.bgBottom).setOrigin(0).setAlpha(0.65);
+  const bottom = scene.add
+    .rectangle(0, 0, width, height, world.bgBottom)
+    .setOrigin(0)
+    .setAlpha(0.65);
   container.add([top, bottom]);
 
   // Painterly nebula blobs.
