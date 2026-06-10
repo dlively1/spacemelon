@@ -1,12 +1,27 @@
 import { test, expect } from "@playwright/test";
 import {
   bootGame,
+  clearLevel,
   events,
+  grantAbility,
   snapshot,
   sweepFire,
   waitForEvent,
   waitForEventAfter,
 } from "./helpers/gameClient";
+
+test("bridge cheats grant abilities and clear levels without grinding", async ({ page }) => {
+  await bootGame(page, { seed: 5, autoplay: true, invincible: true });
+  const start = await waitForEvent(page, "level-start");
+
+  await grantAbility(page, "multiLaser");
+  const withAbility = await snapshot(page);
+  expect(withAbility.ability).toBe("multiLaser");
+
+  await clearLevel(page);
+  const lvl2 = await waitForEventAfter(page, "level-start", start.t, 8_000);
+  expect(lvl2.level).toBe(2);
+});
 
 test("firing while sweeping eventually destroys a watermelon and scores", async ({ page }) => {
   test.setTimeout(30_000);
@@ -23,11 +38,12 @@ test("firing while sweeping eventually destroys a watermelon and scores", async 
 
 test("clearing enough watermelons advances to level 2", async ({ page }) => {
   test.setTimeout(120_000);
-  await bootGame(page, { seed: 13, autoplay: true, invincible: true });
+  // 3× game speed — progression tests shouldn't wait wall-clock minutes.
+  await bootGame(page, { seed: 13, autoplay: true, invincible: true, timeScale: 3 });
   const start1 = await waitForEvent(page, "level-start");
   // Sweep+fire indefinitely while waiting for the level-2 start event.
-  sweepFire(page, 90_000).catch(() => {});
-  const lvl2 = await waitForEventAfter(page, "level-start", start1.t, 90_000);
+  sweepFire(page, 60_000).catch(() => {});
+  const lvl2 = await waitForEventAfter(page, "level-start", start1.t, 60_000);
   expect(lvl2.level).toBeGreaterThanOrEqual(2);
   const snap = await snapshot(page);
   expect(snap.level).toBeGreaterThanOrEqual(2);
@@ -85,13 +101,14 @@ test("ship dies after enough hits and the game-over event carries stats", async 
 
 test("level 3 spawns a megamelon and it takes multiple hits to break", async ({ page }) => {
   test.setTimeout(120_000);
-  await bootGame(page, { seed: 0x1234, level: 3, autoplay: true, invincible: true });
+  // 3× game speed — progression tests shouldn't wait wall-clock minutes.
+  await bootGame(page, { seed: 0x1234, level: 3, autoplay: true, invincible: true, timeScale: 3 });
   await waitForEvent(page, "level-start");
 
   // Sweep+fire so we actually hit the 6-kill mega cue (atKill: 6 in
   // src/levels/levels.ts). A stationary ship at center barely lands hits
   // against L3's wave-path melons.
-  sweepFire(page, 100_000).catch(() => {});
+  sweepFire(page, 60_000).catch(() => {});
 
   const megaSpawn = await page.waitForFunction(
     () =>
@@ -137,7 +154,8 @@ test("no power-up cylinders drop before level 3", async ({ page }) => {
 
 test("level 3 drops a cylinder that the ship can collect for an ability", async ({ page }) => {
   test.setTimeout(120_000);
-  await bootGame(page, { seed: 0x5afe, level: 3, autoplay: true, invincible: true });
+  // 3× game speed — progression tests shouldn't wait wall-clock minutes.
+  await bootGame(page, { seed: 0x5afe, level: 3, autoplay: true, invincible: true, timeScale: 3 });
   await waitForEvent(page, "level-start");
 
   // Pin the ship against the right wall (collideWorldBounds gives it a stable

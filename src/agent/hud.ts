@@ -4,7 +4,6 @@ import { getEventBus } from "./events";
 export class DebugHud {
   private text: Phaser.GameObjects.Text;
   private bus = getEventBus();
-  private lastEmit = 0;
 
   constructor(scene: Phaser.Scene) {
     this.text = scene.add
@@ -33,12 +32,8 @@ export class DebugHud {
         `entities:${info.entities}`,
       ].join("\n"),
     );
-    // Throttle frame events to ~4Hz so the buffer stays useful.
-    const now = scene.time.now;
-    if (now - this.lastEmit > 250) {
-      this.bus.emit({ type: "frame", t: now, fps, entities: info.entities });
-      this.lastEmit = now;
-    }
+    // Frame telemetry events are emitted by GameScene (always on, ~4Hz) —
+    // this HUD is display-only.
   }
 
   setVisible(v: boolean): void {

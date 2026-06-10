@@ -127,6 +127,29 @@ export const LEVELS: LevelTuning[] = [
   },
 ];
 
+// Worst-case load scenario for performance measurement (`?stress=1`):
+// relentless spawns from all edges, generous power-up drops, and clear
+// thresholds set unreachably high so the level never advances. Used by the
+// perf budget test to push entity counts far beyond normal play.
+export const STRESS_TUNING: LevelTuning = {
+  // Fast cadence + slow melons so the screen saturates with live entities
+  // instead of melons draining off the bottom as fast as they spawn.
+  spawnDelayMs: 55,
+  meloSpeedMin: 90,
+  meloSpeedMax: 150,
+  meloSteerAccel: 30,
+  meloMaxSpeed: 180,
+  meloSpreadDeg: 30,
+  meloPath: "wave",
+  sideSpawnChance: 0.3,
+  totalSpawnsCap: 1_000_000,
+  toClear: 1_000_000,
+  megaSchedule: [{ atKill: 8 }, { atKill: 16 }, { atKill: 24 }, { atKill: 32 }, { atKill: 40 }],
+  megaHp: 5,
+  powerupDropChance: 0.15,
+  powerupFallSpeed: 320,
+};
+
 export function tuningForLevel(level: number): LevelTuning {
   if (level <= LEVELS.length) return LEVELS[level - 1];
   const base = LEVELS[LEVELS.length - 1];
