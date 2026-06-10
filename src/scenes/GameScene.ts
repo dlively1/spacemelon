@@ -9,7 +9,8 @@ import { getEventBus } from "../agent/events";
 import { DebugHud } from "../agent/hud";
 import { GameHud } from "../ui/GameHud";
 import { loadBestScore, saveBestScore } from "../agent/highscore";
-import { buildBackground, worldForLevel, type WorldDef } from "../worlds/worlds";
+import { buildBackground, worldForLevel, type StarLayer, type WorldDef } from "../worlds/worlds";
+import { FxFactory } from "../fx/FxFactory";
 import { tuningForLevel, type LevelTuning } from "../levels/levels";
 import { sfx } from "../audio/sfx";
 
@@ -64,9 +65,14 @@ export class GameScene extends Phaser.Scene {
   // Active special ability from a collected power-up cylinder.
   private activeAbility: AbilityType | null = null;
   private abilityExpiresAt = 0;
-  private stars: Phaser.GameObjects.Image[] = [];
+  private starLayers: StarLayer[] = [];
   private bgContainer!: Phaser.GameObjects.Container;
+  private fx!: FxFactory;
   private input$ = { left: false, right: false, up: false, down: false, fire: false };
+  // Reused per-frame cull buffers — update() must not allocate.
+  private escapedBuf: Watermelon[] = [];
+  private culledBuf: Watermelon[] = [];
+  private deadPickupsBuf: Pickup[] = [];
 
   private initStartLevel?: number;
 
@@ -102,7 +108,9 @@ export class GameScene extends Phaser.Scene {
 
     const bg = buildBackground(this, this.world, this.rng);
     this.bgContainer = bg.container;
-    this.stars = bg.stars;
+    this.starLayers = bg.starLayers;
+
+    this.fx = new FxFactory(this, this.rng);
 
     const { width, height } = this.scale;
     this.ship = new Ship(this, width / 2, height - 80);
@@ -178,7 +186,7 @@ export class GameScene extends Phaser.Scene {
     this.bgContainer.destroy(true);
     const bg = buildBackground(this, this.world, this.rng);
     this.bgContainer = bg.container;
-    this.stars = bg.stars;
+    this.starLayers = bg.starLayers;
 
     const bus = getEventBus();
     bus.emit({ type: "level-start", t: this.time.now, level, world: this.world.id });
@@ -321,14 +329,9 @@ export class GameScene extends Phaser.Scene {
 
     if (firing && this.ship.tryFire(time)) this.fireBullet();
 
-    // Parallax: scroll stars + nebula container slightly.
-    for (const s of this.stars) {
-      const sp = (s.getData("speed") as number) ?? 20;
-      s.y += sp * delta * 0.001;
-      if (s.y > this.scale.height + 4) {
-        s.y = -4;
-        s.x = this.rng.range(0, this.scale.width);
-      }
+    // Parallax: scroll the star layers + bob the nebula container slightly.
+    for (const layer of this.starLayers) {
+      layer.sprite.tilePositionY -= layer.speed * delta * 0.001;
     }
     this.bgContainer.y += 4 * delta * 0.001;
     if (this.bgContainer.y > 12) this.bgContainer.y = 0;
@@ -344,8 +347,10 @@ export class GameScene extends Phaser.Scene {
     });
     // Collect off-screen melons first, then act on them AFTER iterating —
     // escape handling can shatter/spawn melons, which mutates the group.
-    const escaped: Watermelon[] = [];
-    const culled: Watermelon[] = [];
+    const escaped = this.escapedBuf;
+    const culled = this.culledBuf;
+    escaped.length = 0;
+    culled.length = 0;
     this.melons.children.iterate((obj) => {
       const m = obj as Watermelon | undefined;
       if (!m || !m.active) return true;
@@ -381,7 +386,8 @@ export class GameScene extends Phaser.Scene {
     }
 
     // Cull cylinders that drifted off-screen — a missed power-up just vanishes.
-    const deadPickups: Pickup[] = [];
+    const deadPickups = this.deadPickupsBuf;
+    deadPickups.length = 0;
     this.pickups.children.iterate((obj) => {
       const p = obj as Pickup | undefined;
       if (!p || !p.active) return true;
@@ -516,7 +522,7 @@ export class GameScene extends Phaser.Scene {
     bus.updateSnapshot({ score: this.score });
     this.gameHud.setScore(this.score);
     this.gameHud.popScore(x, y, award);
-    this.spawnExplosion(x, y, wasMega ? 2 : 1);
+    this.fx.explode(x, y, wasMega ? 2 : 1);
     if (wasMega) this.shatterIntoSmallMelons(x, y);
     melon.despawn();
 
@@ -529,7 +535,7 @@ export class GameScene extends Phaser.Scene {
 
   /** Detonate an area blast: destroy/damage every vulnerable melon in radius. */
   private areaBlastAt(x: number, y: number): void {
-    this.spawnExplosion(x, y, 3);
+    this.fx.explode(x, y, 3);
     this.cameras.main.shake(200, 0.012);
     sfx.play("bomb");
 
@@ -646,7 +652,7 @@ export class GameScene extends Phaser.Scene {
   private onShipHitMelon(melon: Watermelon): void {
     if (this.cfg.invincible || this.gameOverActive) return;
     if (this.ship.isInvincible(this.time.now)) return;
-    this.spawnExplosion(melon.x, melon.y);
+    this.fx.explode(melon.x, melon.y);
     melon.despawn();
     this.lives -= 1;
     const bus = getEventBus();
@@ -671,62 +677,6 @@ export class GameScene extends Phaser.Scene {
     });
 
     if (this.lives <= 0) this.gameOver();
-  }
-
-  private spawnExplosion(x: number, y: number, magnitude: number = 1): void {
-    const ring = this.add
-      .image(x, y, TEX.shockwave)
-      .setScale(0.5 * magnitude)
-      .setBlendMode(Phaser.BlendModes.ADD);
-    this.tweens.add({
-      targets: ring,
-      scale: 3 * magnitude,
-      alpha: { from: 1, to: 0 },
-      duration: 380 + magnitude * 80,
-      onComplete: () => ring.destroy(),
-    });
-
-    const SLICES = magnitude > 1 ? 9 : 5;
-    const slicePxScale = 2 * magnitude;
-    for (let i = 0; i < SLICES; i++) {
-      const baseAngle = (i / SLICES) * Math.PI * 2 + this.rng.range(-0.3, 0.3);
-      const speed = this.rng.range(110, 220) * magnitude;
-      const slice = this.add
-        .image(x, y, TEX.watermelonChunk)
-        .setScale(slicePxScale)
-        // Rind in the texture points down (+y); rotate so rind faces travel.
-        .setRotation(baseAngle - Math.PI / 2)
-        .setDepth(500);
-      const targetX = x + Math.cos(baseAngle) * speed;
-      const targetY = y + Math.sin(baseAngle) * speed;
-      const spin = this.rng.range(-6, 6);
-      this.tweens.add({
-        targets: slice,
-        x: targetX,
-        y: targetY,
-        rotation: slice.rotation + spin,
-        alpha: { from: 1, to: 0 },
-        scale: { from: slicePxScale, to: slicePxScale * 0.7 },
-        ease: "Cubic.easeOut",
-        duration: 650,
-        onComplete: () => slice.destroy(),
-      });
-    }
-
-    const seedCount = magnitude > 1 ? 8 : 4;
-    for (let i = 0; i < seedCount; i++) {
-      const seed = this.add.image(x, y, TEX.seed).setScale(2).setDepth(501);
-      const angle = this.rng.range(0, Math.PI * 2);
-      const speed = this.rng.range(40, 110) * magnitude;
-      this.tweens.add({
-        targets: seed,
-        x: x + Math.cos(angle) * speed,
-        y: y + Math.sin(angle) * speed,
-        alpha: 0,
-        duration: 500,
-        onComplete: () => seed.destroy(),
-      });
-    }
   }
 
   private advanceLevel(): void {

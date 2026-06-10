@@ -1,5 +1,6 @@
 import Phaser from "phaser";
 import { TEX } from "../art/sprites";
+import { FONT } from "../art/pixelFont";
 import type { AbilityType } from "../entities/Pickup";
 
 const DEPTH = 9000;
@@ -34,6 +35,9 @@ export class GameHud {
   private abilityIcon: Phaser.GameObjects.Image | null = null;
   private abilityLabel: Phaser.GameObjects.Text | null = null;
   private abilityBar: Phaser.GameObjects.Rectangle | null = null;
+  // Recycled score-popup texts. BitmapText renders as batched quads — unlike
+  // Phaser.Text there is no per-popup canvas rasterization or texture upload.
+  private popPool: Phaser.GameObjects.BitmapText[] = [];
 
   constructor(
     scene: Phaser.Scene,
@@ -153,33 +157,43 @@ export class GameHud {
 
   // Floats "+amount" / "-amount" up from (x,y) and fades out. Positive uses
   // the warm score color; negative (escape penalty) uses a hot red so the
-  // player notices the punishment.
+  // player notices the punishment. Texts are pooled — kills are frequent and
+  // each popup used to rasterize a fresh Phaser.Text canvas.
   popScore(x: number, y: number, amount: number): void {
     const positive = amount >= 0;
     const label = positive ? `+${amount}` : `${amount}`; // negative already has '-'
-    const text = this.scene.add
-      .text(x, y, label, {
-        fontFamily: "Courier New, monospace",
-        fontSize: "14px",
-        color: positive ? "#fff0a8" : "#ff5577",
-        stroke: positive ? "#9b3aff" : "#3a0010",
-        strokeThickness: 2,
-      })
-      .setOrigin(0.5)
-      .setDepth(DEPTH - 10);
+    let text = this.popPool.pop();
+    if (!text) {
+      text = this.scene.add
+        .bitmapText(0, 0, FONT.pixel)
+        .setOrigin(0.5)
+        .setScale(2)
+        .setDepth(DEPTH - 10);
+    }
+    text
+      .setText(label)
+      .setPosition(x, y)
+      .setAlpha(1)
+      .setTint(positive ? 0xfff0a8 : 0xff5577)
+      .setActive(true)
+      .setVisible(true);
     this.scene.tweens.add({
       targets: text,
       y: y - 28,
       alpha: { from: 1, to: 0 },
       ease: "Cubic.easeOut",
       duration: 550,
-      onComplete: () => text.destroy(),
+      onComplete: () => {
+        text.setActive(false).setVisible(false);
+        this.popPool.push(text);
+      },
     });
   }
 
   setVisible(v: boolean): void {
-    for (const icon of this.lifeIcons)
-      icon.setVisible(v && this.lifeIcons.indexOf(icon) < this.lives);
+    for (let i = 0; i < this.lifeIcons.length; i++) {
+      this.lifeIcons[i].setVisible(v && i < this.lives);
+    }
     this.scoreLabel.setVisible(v);
     this.scoreText.setVisible(v);
     if (!v) this.abilityContainer?.setVisible(false);
@@ -190,5 +204,6 @@ export class GameHud {
     this.scoreLabel.destroy();
     this.scoreText.destroy();
     this.abilityContainer?.destroy(true);
+    for (const t of this.popPool) t.destroy();
   }
 }

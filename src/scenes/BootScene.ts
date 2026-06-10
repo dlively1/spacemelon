@@ -1,5 +1,6 @@
 import Phaser from "phaser";
 import { generateAllSprites } from "../art/sprites";
+import { generatePixelFont } from "../art/pixelFont";
 import { getEventBus } from "../agent/events";
 
 export class BootScene extends Phaser.Scene {
@@ -9,6 +10,7 @@ export class BootScene extends Phaser.Scene {
 
   create(): void {
     generateAllSprites(this);
+    generatePixelFont(this);
     // Make sure pixel art stays crisp on resize.
     for (const tex of Object.values(this.textures.list)) {
       tex.setFilter?.(Phaser.Textures.FilterMode.NEAREST);

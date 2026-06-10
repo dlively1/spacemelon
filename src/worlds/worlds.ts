@@ -1,6 +1,6 @@
 import Phaser from "phaser";
 import { Rng } from "../agent/rng";
-import { TEX } from "../art/sprites";
+import { PixelCanvas } from "../art/pixelCanvas";
 
 export interface WorldDef {
   id: string;
@@ -90,18 +90,64 @@ export function worldForLevel(level: number): WorldDef {
   return WORLDS[(level - 1) % WORLDS.length];
 }
 
-// Builds a parallax background for the given world. Returns the container so
-// scenes can scroll/animate it.
-export function buildBackground(
-  scene: Phaser.Scene,
-  world: WorldDef,
-  rng: Rng,
-): {
+export interface StarLayer {
+  sprite: Phaser.GameObjects.TileSprite;
+  // Downward scroll speed in px/s.
+  speed: number;
+}
+
+export interface BackgroundHandle {
   container: Phaser.GameObjects.Container;
-  stars: Phaser.GameObjects.Image[];
-} {
+  starLayers: StarLayer[];
+}
+
+// Star fields are painted into per-layer canvas textures and scrolled as
+// TileSprites — far (small, dim, slow) and near (big, bright, fast). Keys are
+// reused across rebuilds; registerTexture replaces the old texture.
+const STARS_FAR_TEX = "tex:bg:stars:far";
+const STARS_NEAR_TEX = "tex:bg:stars:near";
+
+function paintStarTexture(
+  scene: Phaser.Scene,
+  key: string,
+  rng: Rng,
+  opts: { count: number; big: boolean },
+): void {
+  const { width, height } = scene.scale;
+  const pc = new PixelCanvas(width, height);
+  for (let i = 0; i < opts.count; i++) {
+    // Keep a margin so stars don't clip at the tile seam.
+    const x = Math.floor(rng.range(3, width - 3));
+    const y = Math.floor(rng.range(3, height - 3));
+    if (opts.big) {
+      // 3x3 cross with a bright core (mirrors the old TEX.starBig look).
+      pc.px(x, y, 0xffffff);
+      pc.px(x - 1, y, 0xb8eaff, 0.9);
+      pc.px(x + 1, y, 0xb8eaff, 0.9);
+      pc.px(x, y - 1, 0xb8eaff, 0.9);
+      pc.px(x, y + 1, 0xb8eaff, 0.9);
+    } else {
+      pc.px(x, y, 0xffffff, rng.range(0.4, 1));
+    }
+  }
+  pc.registerTexture(scene, key);
+}
+
+// Builds a parallax background for the given world.
+//
+// Everything static (gradient, nebula blobs, world decorations) is rendered
+// ONCE into a RenderTexture so it costs a single draw per frame — the
+// Shape-based blobs/decorations would otherwise each break sprite batching
+// every frame. Stars live in two scrolling TileSprite layers, replacing the
+// old per-star JS position loop (and its per-star data-manager lookups).
+export function buildBackground(scene: Phaser.Scene, world: WorldDef, rng: Rng): BackgroundHandle {
   const { width, height } = scene.scale;
   const container = scene.add.container(0, 0).setDepth(-100);
+
+  // --- Static layer, baked into a RenderTexture ---
+  // Built in a temp container that is drawn into the RT and destroyed before
+  // it ever renders to the screen.
+  const temp = scene.add.container(0, 0);
 
   // Vertical gradient (two rects, blend via alpha).
   const top = scene.add.rectangle(0, 0, width, height, world.bgTop).setOrigin(0).setAlpha(1);
@@ -109,7 +155,7 @@ export function buildBackground(
     .rectangle(0, 0, width, height, world.bgBottom)
     .setOrigin(0)
     .setAlpha(0.65);
-  container.add([top, bottom]);
+  temp.add([top, bottom]);
 
   // Painterly nebula blobs.
   for (let i = 0; i < 14; i++) {
@@ -118,24 +164,34 @@ export function buildBackground(
     const y = rng.range(-40, height + 40);
     const r = rng.range(40, 140);
     const blob = scene.add.circle(x, y, r, tint, rng.range(0.05, 0.18));
-    container.add(blob);
+    temp.add(blob);
   }
 
-  // Stars (two parallax layers).
-  const stars: Phaser.GameObjects.Image[] = [];
-  const starCount = Math.round(120 * world.starDensity);
-  for (let i = 0; i < starCount; i++) {
-    const x = rng.range(0, width);
-    const y = rng.range(0, height);
-    const big = rng.chance(0.08);
-    const tex = big ? TEX.starBig : TEX.star;
-    const star = scene.add.image(x, y, tex).setAlpha(big ? 1 : rng.range(0.4, 1));
-    if (big) star.setData("speed", rng.range(40, 90));
-    else star.setData("speed", rng.range(10, 35));
-    container.add(star);
-    stars.push(star);
-  }
+  world.decorate?.(scene, rng, temp);
 
-  world.decorate?.(scene, rng, container);
-  return { container, stars };
+  const rt = scene.add.renderTexture(0, 0, width, height).setOrigin(0);
+  rt.draw(temp, 0, 0);
+  temp.destroy(true);
+  container.add(rt);
+
+  // --- Star layers (scrolling TileSprites) ---
+  paintStarTexture(scene, STARS_FAR_TEX, rng, {
+    count: Math.round(110 * world.starDensity),
+    big: false,
+  });
+  paintStarTexture(scene, STARS_NEAR_TEX, rng, {
+    count: Math.round(10 * world.starDensity),
+    big: true,
+  });
+
+  const far = scene.add.tileSprite(0, 0, width, height, STARS_FAR_TEX).setOrigin(0);
+  const near = scene.add.tileSprite(0, 0, width, height, STARS_NEAR_TEX).setOrigin(0);
+  container.add([far, near]);
+
+  const starLayers: StarLayer[] = [
+    { sprite: far, speed: 22 },
+    { sprite: near, speed: 65 },
+  ];
+
+  return { container, starLayers };
 }
