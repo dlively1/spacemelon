@@ -1,28 +1,29 @@
 import Phaser from "phaser";
 import { Ship } from "../entities/Ship";
 import { Watermelon } from "../entities/Watermelon";
-import { Pickup, type AbilityType } from "../entities/Pickup";
+import { Pickup } from "../entities/Pickup";
 import { TEX } from "../art/sprites";
 import { Rng } from "../agent/rng";
 import { readAgentConfig, type AgentConfig } from "../agent/config";
 import { getEventBus } from "../agent/events";
 import { DebugHud } from "../agent/hud";
 import { GameHud } from "../ui/GameHud";
+import { buildGameOverPanel } from "../ui/GameOverPanel";
 import { loadBestScore, saveBestScore } from "../agent/highscore";
 import { buildBackground, worldForLevel, type StarLayer, type WorldDef } from "../worlds/worlds";
 import { FxFactory } from "../fx/FxFactory";
+import { ABILITIES, type FireBullet } from "../abilities/abilities";
+import { AbilitySystem } from "../systems/AbilitySystem";
+import { SpawnDirector } from "../systems/SpawnDirector";
 import { tuningForLevel, STRESS_TUNING, type LevelTuning } from "../levels/levels";
 import { SCORE, killAward, escapePenalty, applyScoreDelta } from "../rules/scoring";
-import { dueMegaCues, isLevelCleared } from "../rules/progression";
+import { isLevelCleared } from "../rules/progression";
 import { sfx } from "../audio/sfx";
 
 const STARTING_LIVES = 3;
-const MEGA_SHATTER_COUNT = 6;
 // Ignore restart input for this long after game over so a mashed fire key
 // (SPACE) doesn't immediately kick off a fresh run.
 const RESTART_LOCK_MS = 1000;
-// How long a collected special ability stays active.
-const ABILITY_DURATION_MS = 8000;
 // Radius (px) of an area-blast detonation.
 const AREA_BLAST_RADIUS = 110;
 
@@ -44,25 +45,21 @@ export class GameScene extends Phaser.Scene {
   private cfg!: AgentConfig;
   private hud!: DebugHud;
   private gameHud!: GameHud;
+  private director!: SpawnDirector;
+  private abilities!: AbilitySystem;
+  private fx!: FxFactory;
   private level = 1;
   private world!: WorldDef;
   private tuning!: LevelTuning;
   private score = 0;
   private lives = STARTING_LIVES;
-  private spawnedThisLevel = 0;
   private killedThisLevel = 0;
   private killedTotal = 0;
-  // Megamelon cues consumed by index as kill count advances.
-  private megaCueIdx = 0;
   private gameOverActive = false;
   private gameOverHint?: Phaser.GameObjects.Text;
   private levelTransitioning = false;
-  // Active special ability from a collected power-up cylinder.
-  private activeAbility: AbilityType | null = null;
-  private abilityExpiresAt = 0;
   private starLayers: StarLayer[] = [];
   private bgContainer!: Phaser.GameObjects.Container;
-  private fx!: FxFactory;
   private input$ = { left: false, right: false, up: false, down: false, fire: false };
   // Reused per-frame cull buffers — update() must not allocate.
   private escapedBuf: Watermelon[] = [];
@@ -90,8 +87,6 @@ export class GameScene extends Phaser.Scene {
     this.lives = STARTING_LIVES;
     this.killedTotal = 0;
     this.gameOverActive = false;
-    this.activeAbility = null;
-    this.abilityExpiresAt = 0;
 
     const bus = getEventBus();
     bus.emit({ type: "scene", t: this.time.now, name: "game" });
@@ -130,6 +125,14 @@ export class GameScene extends Phaser.Scene {
     this.melons = this.physics.add.group({ classType: Watermelon, runChildUpdate: true });
     this.pickups = this.physics.add.group({ classType: Pickup, runChildUpdate: true });
 
+    this.director = new SpawnDirector({
+      scene: this,
+      rng: this.rng,
+      melons: this.melons,
+      ship: this.ship,
+      timeScale: ts,
+    });
+
     this.physics.add.overlap(this.bullets, this.melons, (b, m) => {
       const melon = m as Watermelon;
       // Skip kills that would happen while the melon is still off-screen —
@@ -164,6 +167,7 @@ export class GameScene extends Phaser.Scene {
     this.input.once("pointerdown", () => sfx.resume());
 
     this.gameHud = new GameHud(this, { lives: this.lives, score: this.score });
+    this.abilities = new AbilitySystem(this, this.gameHud);
     this.hud = new DebugHud(this);
     this.hud.setVisible(this.cfg.debug);
 
@@ -177,7 +181,7 @@ export class GameScene extends Phaser.Scene {
     // Test shortcuts: jump to a state instead of grinding toward it.
     bus.bindCheats({
       grantAbility: (ability) => {
-        if (!this.gameOverActive) this.grantAbility(ability);
+        if (!this.gameOverActive) this.abilities.grant(ability);
       },
       clearLevel: () => {
         if (!this.gameOverActive && !this.levelTransitioning) this.advanceLevel();
@@ -193,10 +197,9 @@ export class GameScene extends Phaser.Scene {
     this.level = level;
     this.world = worldForLevel(level);
     this.tuning = this.cfg.stress ? STRESS_TUNING : tuningForLevel(level);
-    this.spawnedThisLevel = 0;
     this.killedThisLevel = 0;
-    this.megaCueIdx = 0;
     this.levelTransitioning = false;
+    this.director.startLevel(this.tuning);
 
     // Rebuild background for the new world.
     this.bgContainer.destroy(true);
@@ -233,99 +236,8 @@ export class GameScene extends Phaser.Scene {
     this.time.addEvent({
       delay: this.tuning.spawnDelayMs,
       loop: true,
-      callback: () => this.spawnMelon(),
+      callback: () => this.director.spawnTick(),
     });
-  }
-
-  private spawnMelon(): void {
-    if (this.spawnedThisLevel >= this.tuning.totalSpawnsCap) return;
-    const { width, height } = this.scale;
-
-    // Pick a spawn edge: top by default; at higher levels, occasionally
-    // from a side edge for flanking pressure. Spawn just outside the play
-    // area so melons drift into view quickly — the vulnerability gate in
-    // Watermelon makes sure they can't be killed until they're on-screen.
-    const side =
-      this.rng.next() < this.tuning.sideSpawnChance
-        ? this.rng.pick(["left", "right"] as const)
-        : "top";
-    let x: number;
-    let y: number;
-    if (side === "top") {
-      x = this.rng.range(40, width - 40);
-      y = -12;
-    } else if (side === "left") {
-      x = -16;
-      y = this.rng.range(60, height * 0.6);
-    } else {
-      x = width + 16;
-      y = this.rng.range(60, height * 0.6);
-    }
-
-    this.makeMelon(x, y, { mega: false });
-    this.spawnedThisLevel++;
-  }
-
-  /** Spawn a megamelon at the top center if the schedule says it's time. */
-  private maybeSpawnScheduledMega(): void {
-    const due = dueMegaCues(this.tuning.megaSchedule, this.megaCueIdx, this.killedThisLevel);
-    for (let i = 0; i < due; i++) {
-      const { width } = this.scale;
-      const x = this.rng.range(width * 0.3, width * 0.7);
-      // Just above the screen — at scale 4 the sprite is ~112px so it peeks
-      // in immediately; vulnerability gate still keeps it un-killable until
-      // it's actually visible.
-      const y = -30;
-      this.makeMelon(x, y, { mega: true });
-      this.megaCueIdx++;
-    }
-  }
-
-  /** Pull a watermelon (small or mega) from the pool, aimed at the ship. */
-  private makeMelon(
-    x: number,
-    y: number,
-    opts: { mega: boolean; speedScale?: number },
-  ): Watermelon | null {
-    const t = this.tuning;
-    const dx = this.ship.x - x;
-    const dy = this.ship.y - y;
-    // Use raw dy magnitude (no clamp) so side spawns aim sideways at the
-    // ship instead of being forced downward.
-    const baseAngle = Math.atan2(dy, dx);
-    const spreadDeg = this.rng.range(-t.meloSpreadDeg, t.meloSpreadDeg);
-    const angle = baseAngle + (spreadDeg * Math.PI) / 180;
-    const speedScale = opts.speedScale ?? (opts.mega ? 0.7 : 1);
-    const speed = this.rng.range(t.meloSpeedMin, t.meloSpeedMax) * speedScale;
-    const vx = Math.cos(angle) * speed;
-    const vy = Math.sin(angle) * speed;
-    const spin = this.rng.range(-2.5, 2.5);
-
-    const m = this.melons.get() as Watermelon | null;
-    if (!m) return null;
-    m.spawn(x, y, {
-      vx,
-      vy,
-      spin,
-      target: this.ship,
-      steerAccel: t.meloSteerAccel * (opts.mega ? 0.6 : 1),
-      maxSpeed: t.meloMaxSpeed * (opts.mega ? 0.7 : 1),
-      pathPattern: t.meloPath,
-      wavePhase: this.rng.range(0, Math.PI * 2),
-      timeScale: this.cfg.timeScale,
-      mega: opts.mega,
-      hp: opts.mega ? t.megaHp : 1,
-    });
-    getEventBus().emit({
-      type: "spawn",
-      t: this.time.now,
-      kind: "watermelon",
-      id: m.meloId,
-      x,
-      y,
-      mega: opts.mega,
-    });
-    return m;
   }
 
   update(time: number, delta: number): void {
@@ -387,20 +299,7 @@ export class GameScene extends Phaser.Scene {
     for (const m of escaped) this.onMelonEscaped(m);
     for (const m of culled) m.despawn();
 
-    // Expire the active ability and drain its HUD timer.
-    if (this.activeAbility) {
-      if (time >= this.abilityExpiresAt) {
-        const expired = this.activeAbility;
-        this.activeAbility = null;
-        const bus = getEventBus();
-        bus.emit({ type: "powerup-expire", t: this.time.now, ability: expired });
-        bus.updateSnapshot({ ability: null });
-        this.gameHud.clearAbility();
-      } else {
-        const remaining = (this.abilityExpiresAt - time) / ABILITY_DURATION_MS;
-        this.gameHud.updateAbilityTimer(remaining);
-      }
-    }
+    this.abilities.update(time);
 
     // Cull cylinders that drifted off-screen — a missed power-up just vanishes.
     const deadPickups = this.deadPickupsBuf;
@@ -420,7 +319,7 @@ export class GameScene extends Phaser.Scene {
     if (
       !this.gameOverActive &&
       !this.levelTransitioning &&
-      this.spawnedThisLevel >= this.tuning.totalSpawnsCap &&
+      this.director.isExhausted() &&
       this.melons.countActive(true) === 0
     ) {
       this.advanceLevel();
@@ -451,21 +350,10 @@ export class GameScene extends Phaser.Scene {
   }
 
   private fireBullet(): void {
-    switch (this.activeAbility) {
-      case "multiLaser":
-        // 3-way spread: straight up plus two angled lanes.
-        this.spawnBullet(0, -560);
-        this.spawnBullet(-150, -540);
-        this.spawnBullet(150, -540);
-        break;
-      case "areaBlast":
-        // A single explosive round that detonates on impact.
-        this.spawnBullet(0, -560, true);
-        break;
-      default:
-        this.spawnBullet(0, -560);
-        break;
-    }
+    const fire: FireBullet = (vx, vy, explosive) => this.spawnBullet(vx, vy, explosive);
+    const active = this.abilities.activeDef;
+    if (active) active.onFire(fire);
+    else fire(0, -560);
     sfx.play("fire");
   }
 
@@ -550,13 +438,13 @@ export class GameScene extends Phaser.Scene {
     this.gameHud.setScore(this.score);
     this.gameHud.popScore(x, y, award);
     this.fx.explode(x, y, wasMega ? 2 : 1);
-    if (wasMega) this.shatterIntoSmallMelons(x, y);
+    if (wasMega) this.director.shatter(x, y);
     melon.despawn();
 
     // Chance to drop a power-up cylinder (0 before level 3).
     if (this.rng.next() < this.tuning.powerupDropChance) this.spawnPickup(x, y);
 
-    this.maybeSpawnScheduledMega();
+    this.director.noteKills(this.killedThisLevel);
     if (isLevelCleared(this.killedThisLevel, this.tuning.toClear)) this.advanceLevel();
   }
 
@@ -590,7 +478,7 @@ export class GameScene extends Phaser.Scene {
 
   /** Pull a power-up cylinder from the pool; it drifts straight down from (x, y). */
   private spawnPickup(x: number, y: number): void {
-    const ability: AbilityType = this.rng.next() < 0.5 ? "multiLaser" : "areaBlast";
+    const ability = this.rng.pick(ABILITIES).id;
     const p = this.pickups.get() as Pickup | null;
     if (!p) return;
     p.spawn(x, y, { ability, vy: this.tuning.powerupFallSpeed });
@@ -610,48 +498,8 @@ export class GameScene extends Phaser.Scene {
     const id = pickup.pickupId;
     pickup.despawn();
 
-    this.grantAbility(ability);
-
-    const bus = getEventBus();
-    bus.emit({ type: "powerup-collect", t: this.time.now, id, ability });
-  }
-
-  /** Activate a special ability (pickup catch or bridge cheat). */
-  private grantAbility(ability: AbilityType): void {
-    this.activeAbility = ability;
-    this.abilityExpiresAt = this.time.now + ABILITY_DURATION_MS;
-    sfx.play("powerup");
-    this.gameHud.setAbility(ability);
-    getEventBus().updateSnapshot({ ability });
-  }
-
-  /** A killed megamelon bursts into a ring of small melons. */
-  private shatterIntoSmallMelons(x: number, y: number): void {
-    for (let i = 0; i < MEGA_SHATTER_COUNT; i++) {
-      const angle = (i / MEGA_SHATTER_COUNT) * Math.PI * 2 + this.rng.range(-0.15, 0.15);
-      const speed = this.rng.range(140, 200);
-      const m = this.melons.get() as Watermelon | null;
-      if (!m) continue;
-      m.spawn(x, y, {
-        vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed,
-        spin: this.rng.range(-3, 3),
-        target: this.ship,
-        steerAccel: this.tuning.meloSteerAccel * 0.5,
-        maxSpeed: this.tuning.meloMaxSpeed,
-        pathPattern: "straight",
-        timeScale: this.cfg.timeScale,
-      });
-      getEventBus().emit({
-        type: "spawn",
-        t: this.time.now,
-        kind: "watermelon",
-        id: m.meloId,
-        x,
-        y,
-        mega: false,
-      });
-    }
+    this.abilities.grant(ability);
+    getEventBus().emit({ type: "powerup-collect", t: this.time.now, id, ability });
   }
 
   /** A melon drifted off the bottom of the screen — penalize the player. */
@@ -749,9 +597,16 @@ export class GameScene extends Phaser.Scene {
     this.time.removeAllEvents();
     this.gameHud.setVisible(false);
 
-    const panel = this.buildGameOverPanel({ newBest, bestScore });
-    panel.setAlpha(0);
-    this.tweens.add({ targets: panel, alpha: 1, duration: 250 });
+    const { container, hint } = buildGameOverPanel(this, {
+      score: this.score,
+      level: this.level,
+      killedTotal: this.killedTotal,
+      newBest,
+      bestScore,
+    });
+    this.gameOverHint = hint;
+    container.setAlpha(0);
+    this.tweens.add({ targets: container, alpha: 1, duration: 250 });
 
     // Lock out all input briefly so the spacebar a player is mashing to fire
     // doesn't instantly restart the run. After the delay, ENTER (or SPACE)
@@ -762,104 +617,6 @@ export class GameScene extends Phaser.Scene {
       this.input.keyboard?.once("keydown-ESC", () => this.scene.start("menu"));
       this.gameOverHint?.setVisible(true);
     });
-  }
-
-  private buildGameOverPanel(opts: {
-    newBest: boolean;
-    bestScore: number;
-  }): Phaser.GameObjects.Container {
-    const { width, height } = this.scale;
-    const cx = width / 2;
-    const cy = height / 2;
-    const container = this.add.container(cx, cy).setDepth(5000).setScrollFactor(0);
-
-    const W = 280;
-    const H = 240;
-    const bg = this.add.rectangle(0, 0, W, H, 0x05030a, 0.85).setStrokeStyle(2, 0x9b3aff, 1);
-    container.add(bg);
-
-    const fmt = (n: number) => n.toString().padStart(6, "0");
-    const label = (s: string) => s.padEnd(12, " ");
-    const lines: Array<{ text: string; y: number; size: number; color: string; stroke?: string }> =
-      [
-        { text: "GAME OVER", y: -98, size: 28, color: "#ff7bd1", stroke: "#150033" },
-        { text: "─────────────────", y: -64, size: 12, color: "#9b3aff" },
-        { text: `${label("SCORE")}${fmt(this.score)}`, y: -38, size: 14, color: "#fff0a8" },
-        {
-          text: `${label("LEVEL")}${this.level.toString().padStart(6, " ")}`,
-          y: -18,
-          size: 14,
-          color: "#b8eaff",
-        },
-        {
-          text: `${label("MELONS")}${this.killedTotal.toString().padStart(6, " ")}`,
-          y: 2,
-          size: 14,
-          color: "#77d76d",
-        },
-        { text: "─────────────────", y: 24, size: 12, color: "#9b3aff" },
-      ];
-    for (const l of lines) {
-      const t = this.add
-        .text(0, l.y, l.text, {
-          fontFamily: "Courier New, monospace",
-          fontSize: `${l.size}px`,
-          color: l.color,
-          ...(l.stroke ? { stroke: l.stroke, strokeThickness: 3 } : {}),
-        })
-        .setOrigin(0.5);
-      container.add(t);
-    }
-
-    if (opts.newBest) {
-      const badge = this.add
-        .text(0, 50, "★  NEW BEST  ★", {
-          fontFamily: "Courier New, monospace",
-          fontSize: "16px",
-          color: "#fff0a8",
-          stroke: "#ff9d3a",
-          strokeThickness: 3,
-        })
-        .setOrigin(0.5);
-      container.add(badge);
-      this.tweens.add({
-        targets: badge,
-        scale: { from: 1, to: 1.1 },
-        duration: 600,
-        yoyo: true,
-        repeat: -1,
-        ease: "Sine.easeInOut",
-      });
-    } else {
-      const best = this.add
-        .text(0, 50, `${label("BEST")}${fmt(opts.bestScore)}`, {
-          fontFamily: "Courier New, monospace",
-          fontSize: "14px",
-          color: "#b8eaff",
-        })
-        .setOrigin(0.5);
-      container.add(best);
-    }
-
-    const hint = this.add
-      .text(0, 96, "ENTER  RESTART      ESC  MENU", {
-        fontFamily: "Courier New, monospace",
-        fontSize: "11px",
-        color: "#6ac3ff",
-      })
-      .setOrigin(0.5)
-      .setVisible(false);
-    container.add(hint);
-    this.gameOverHint = hint;
-    this.tweens.add({
-      targets: hint,
-      alpha: { from: 1, to: 0.35 },
-      duration: 700,
-      yoyo: true,
-      repeat: -1,
-    });
-
-    return container;
   }
 
   private restart(): void {

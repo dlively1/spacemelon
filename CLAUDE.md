@@ -53,8 +53,16 @@ src/
   rules/
     scoring.ts            Pure scoring rules (awards, penalties, floor-at-0)
     progression.ts        Pure level-progression rules (mega cues, level clear)
+  abilities/
+    abilities.ts          Ability registry (id, art, HUD meta, firing pattern) — abilities are data
+  systems/
+    SpawnDirector.ts      Melon spawning: edge picks, aiming, mega cues, shatter
+    AbilitySystem.ts      Active-ability lifecycle: grant, expiry, HUD/snapshot sync
+  fx/
+    FxFactory.ts          Pooled/batched explosion FX (particle emitters + ring pool)
   ui/
     GameHud.ts            Always-on lives + score overlay (separate from agent/hud.ts dev HUD)
+    GameOverPanel.ts      Game-over results panel builder
   audio/
     sfx.ts                Singleton WebAudio synth — procedural retro blips (no asset binaries)
   entities/
@@ -195,7 +203,13 @@ When iterating on gameplay or visuals:
 ## Adding things — quick recipes
 
 - **New enemy:** sprite in `art/sprites.ts` (+ `TEX` key), entity class in
-  `entities/`, spawn in `GameScene`, emit a `spawn` variant with a new `kind`.
+  `entities/` (pooled — follow Watermelon's `spawn()`/`despawn()` pattern),
+  spawn from `systems/SpawnDirector.ts`, emit a `spawn` variant with a new
+  `kind`.
+- **New ability:** append an `AbilityDef` to `ABILITIES` in
+  `src/abilities/abilities.ts` (label, texture, HUD color, firing pattern) and
+  add the id to `AbilityType`. The pickup drop table, HUD badge, and fire
+  handler all read from the registry — no other edits needed.
 - **New world:** new `WorldDef` in `worlds/worlds.ts` — palette + optional
   `decorate(scene, rng, layer)` for set-pieces.
 - **Retune difficulty:** edit the `LEVELS` array in `src/levels/levels.ts`.
