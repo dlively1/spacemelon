@@ -1,14 +1,9 @@
 import Phaser from "phaser";
 import { TEX } from "../art/sprites";
 import { FONT } from "../art/pixelFont";
-import type { AbilityType } from "../entities/Pickup";
+import { abilityDef, type AbilityType } from "../abilities/abilities";
 
 const DEPTH = 9000;
-
-const ABILITY_META: Record<AbilityType, { label: string; tex: string; color: string }> = {
-  multiLaser: { label: "MULTI-LASER", tex: TEX.powerLaser, color: "#ffe14d" },
-  areaBlast: { label: "AREA-BLAST", tex: TEX.powerBomb, color: "#ffe14d" },
-};
 
 const ABILITY_BAR_W = 96;
 const LIFE_X = 12;
@@ -113,13 +108,15 @@ export class GameHud {
   // Show (or update) the active-ability badge at top-center: pickup icon,
   // ability name, and a full timer bar that drains via updateAbilityTimer.
   setAbility(type: AbilityType): void {
-    const meta = ABILITY_META[type];
+    const meta = abilityDef(type);
     const { width } = this.scene.scale;
     const cx = width / 2;
 
     if (!this.abilityContainer) {
       this.abilityContainer = this.scene.add.container(cx, 44).setScrollFactor(0).setDepth(DEPTH);
-      this.abilityIcon = this.scene.add.image(-ABILITY_BAR_W / 2 - 12, 0, meta.tex).setScale(1.5);
+      this.abilityIcon = this.scene.add
+        .image(-ABILITY_BAR_W / 2 - 12, 0, meta.texture)
+        .setScale(1.5);
       this.abilityLabel = this.scene.add
         .text(0, -10, meta.label, {
           fontFamily: "Courier New, monospace",
@@ -138,7 +135,7 @@ export class GameHud {
         .setOrigin(0, 0.5);
       this.abilityContainer.add([this.abilityIcon, this.abilityLabel, track, this.abilityBar]);
     } else {
-      this.abilityIcon!.setTexture(meta.tex);
+      this.abilityIcon!.setTexture(meta.texture);
       this.abilityLabel!.setText(meta.label).setColor(meta.color);
     }
     this.abilityContainer.setVisible(true);

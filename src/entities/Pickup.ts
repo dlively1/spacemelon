@@ -1,8 +1,10 @@
 import Phaser from "phaser";
 import { TEX } from "../art/sprites";
+import { abilityDef, type AbilityType } from "../abilities/abilities";
 
-// Which special ability a power-up cylinder grants when collected.
-export type AbilityType = "multiLaser" | "areaBlast";
+// Re-export so existing imports (tests, gameClient) keep working; the
+// canonical definition lives in the ability registry.
+export type { AbilityType };
 
 export interface PickupOpts {
   ability: AbilityType;
@@ -10,11 +12,6 @@ export interface PickupOpts {
   // player has a narrow window to catch one before it slips past.
   vy: number;
 }
-
-const TEX_FOR_ABILITY: Record<AbilityType, string> = {
-  multiLaser: TEX.powerLaser,
-  areaBlast: TEX.powerBomb,
-};
 
 // Pooled collectible: instances are created by the scene's physics group and
 // reused via spawn()/despawn(). All per-pickup state is assigned in spawn().
@@ -36,7 +33,7 @@ export class Pickup extends Phaser.Physics.Arcade.Sprite {
 
     this.pickupId = Pickup.nextId++;
     this.ability = opts.ability;
-    this.setTexture(TEX_FOR_ABILITY[opts.ability]);
+    this.setTexture(abilityDef(opts.ability).texture);
     this.setScale(2);
     this.setRotation(0);
     this.setDepth(40);

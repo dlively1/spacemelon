@@ -26,6 +26,7 @@ a symlink to this file — keep both in sync by editing only `CLAUDE.md`.
 | `pnpm typecheck`    | `tsc --noEmit`.                                                 |
 | `pnpm lint`         | ESLint — includes the `Math.random()` ban in `src/`.            |
 | `pnpm format`       | Prettier write (`format:check` is what CI runs).                |
+| `pnpm test:unit`    | Vitest unit tests for pure logic (ms-fast, no browser).         |
 
 If the environment can't download Playwright's pinned browser (sandboxed
 sessions), point the suite at a preinstalled Chromium:
@@ -49,8 +50,19 @@ src/
     worlds.ts             WorldDef registry + buildBackground(scene, world, rng)
   levels/
     levels.ts             LevelTuning registry (spawn rate, speed, megas) + tuningForLevel
+  rules/
+    scoring.ts            Pure scoring rules (awards, penalties, floor-at-0)
+    progression.ts        Pure level-progression rules (mega cues, level clear)
+  abilities/
+    abilities.ts          Ability registry (id, art, HUD meta, firing pattern) — abilities are data
+  systems/
+    SpawnDirector.ts      Melon spawning: edge picks, aiming, mega cues, shatter
+    AbilitySystem.ts      Active-ability lifecycle: grant, expiry, HUD/snapshot sync
+  fx/
+    FxFactory.ts          Pooled/batched explosion FX (particle emitters + ring pool)
   ui/
     GameHud.ts            Always-on lives + score overlay (separate from agent/hud.ts dev HUD)
+    GameOverPanel.ts      Game-over results panel builder
   audio/
     sfx.ts                Singleton WebAudio synth — procedural retro blips (no asset binaries)
   entities/
@@ -64,6 +76,8 @@ tests/
   helpers/gameClient.ts   Typed wrappers around the bridge for Playwright
   smoke.spec.ts           Boot + per-world screenshot capture
   gameplay.spec.ts        Fire → hit → level-up flow
+  perf.spec.ts            FPS budget under ?stress=1 load (own Playwright project)
+  unit/                   Vitest unit tests for pure logic (rules, levels, rng)
 ```
 
 ## The agent loop (THIS IS THE LOAD-BEARING PART)
@@ -118,10 +132,13 @@ regressions fail CI instead of landing silently.
 `score`, `lives`, `game-over`, `restart`, `frame`. All carry `t` (ms since
 boot). See `src/agent/events.ts` for exact shapes.
 
-**Scoring rules** live in `src/scenes/GameScene.ts` as constants:
+**Scoring rules** live in `src/rules/scoring.ts` (pure, unit-tested):
 small kill `+100`, mega hit `+50`, mega destroy `+500`. Letting a melon drift
 off the bottom of the screen penalizes the player (`escape` event):
 small `-50`, mega `-200`. Score floors at 0 — bad runs can't go negative.
+Mega-cue and level-clear logic is in `src/rules/progression.ts`. Prefer
+extending these pure modules (plus a Vitest test) over burying rules in
+`GameScene` — unit tests run in milliseconds, the e2e suite takes minutes.
 
 ### Test helpers
 
@@ -186,7 +203,13 @@ When iterating on gameplay or visuals:
 ## Adding things — quick recipes
 
 - **New enemy:** sprite in `art/sprites.ts` (+ `TEX` key), entity class in
-  `entities/`, spawn in `GameScene`, emit a `spawn` variant with a new `kind`.
+  `entities/` (pooled — follow Watermelon's `spawn()`/`despawn()` pattern),
+  spawn from `systems/SpawnDirector.ts`, emit a `spawn` variant with a new
+  `kind`.
+- **New ability:** append an `AbilityDef` to `ABILITIES` in
+  `src/abilities/abilities.ts` (label, texture, HUD color, firing pattern) and
+  add the id to `AbilityType`. The pickup drop table, HUD badge, and fire
+  handler all read from the registry — no other edits needed.
 - **New world:** new `WorldDef` in `worlds/worlds.ts` — palette + optional
   `decorate(scene, rng, layer)` for set-pieces.
 - **Retune difficulty:** edit the `LEVELS` array in `src/levels/levels.ts`.
