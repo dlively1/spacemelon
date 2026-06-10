@@ -11,7 +11,7 @@ import { GameHud } from "../ui/GameHud";
 import { loadBestScore, saveBestScore } from "../agent/highscore";
 import { buildBackground, worldForLevel, type StarLayer, type WorldDef } from "../worlds/worlds";
 import { FxFactory } from "../fx/FxFactory";
-import { tuningForLevel, type LevelTuning } from "../levels/levels";
+import { tuningForLevel, STRESS_TUNING, type LevelTuning } from "../levels/levels";
 import { sfx } from "../audio/sfx";
 
 const STARTING_LIVES = 3;
@@ -73,6 +73,8 @@ export class GameScene extends Phaser.Scene {
   private escapedBuf: Watermelon[] = [];
   private culledBuf: Watermelon[] = [];
   private deadPickupsBuf: Pickup[] = [];
+  // Throttle for the always-on `frame` telemetry event (~4Hz).
+  private lastFrameEmit = 0;
 
   private initStartLevel?: number;
 
@@ -114,6 +116,16 @@ export class GameScene extends Phaser.Scene {
 
     const { width, height } = this.scale;
     this.ship = new Ship(this, width / 2, height - 80);
+
+    // Game-speed multiplier (?timeScale=N). Arcade's world.timeScale is
+    // inverted (0.5 = double speed); clocks and tweens multiply normally.
+    // Ship fire cooldown and melon steering run off the raw loop clock and
+    // scale themselves (see Ship.setTimeScale / WatermelonOpts.timeScale).
+    const ts = this.cfg.timeScale;
+    this.physics.world.timeScale = 1 / ts;
+    this.time.timeScale = ts;
+    this.tweens.timeScale = ts;
+    this.ship.setTimeScale(ts);
 
     this.bullets = this.physics.add.group({
       maxSize: 32,
@@ -167,6 +179,15 @@ export class GameScene extends Phaser.Scene {
       fire: (d) => (this.input$.fire = d),
       pause: () => this.togglePause(),
     });
+    // Test shortcuts: jump to a state instead of grinding toward it.
+    bus.bindCheats({
+      grantAbility: (ability) => {
+        if (!this.gameOverActive) this.grantAbility(ability);
+      },
+      clearLevel: () => {
+        if (!this.gameOverActive && !this.levelTransitioning) this.advanceLevel();
+      },
+    });
 
     this.startLevel(this.level);
 
@@ -176,7 +197,7 @@ export class GameScene extends Phaser.Scene {
   private startLevel(level: number): void {
     this.level = level;
     this.world = worldForLevel(level);
-    this.tuning = tuningForLevel(level);
+    this.tuning = this.cfg.stress ? STRESS_TUNING : tuningForLevel(level);
     this.spawnedThisLevel = 0;
     this.killedThisLevel = 0;
     this.megaCueIdx = 0;
@@ -296,6 +317,7 @@ export class GameScene extends Phaser.Scene {
       maxSpeed: t.meloMaxSpeed * (opts.mega ? 0.7 : 1),
       pathPattern: t.meloPath,
       wavePhase: this.rng.range(0, Math.PI * 2),
+      timeScale: this.cfg.timeScale,
       mega: opts.mega,
       hp: opts.mega ? t.megaHp : 1,
     });
@@ -409,15 +431,27 @@ export class GameScene extends Phaser.Scene {
       this.advanceLevel();
     }
 
+    const entities =
+      this.melons.countActive(true) +
+      this.bullets.countActive(true) +
+      this.pickups.countActive(true);
+
+    // Always-on perf telemetry (~4Hz): agents and the perf budget test read
+    // fps/entities from the bridge without needing the debug HUD.
+    if (time - this.lastFrameEmit > 250) {
+      this.lastFrameEmit = time;
+      const fps = Math.round(this.game.loop.actualFps);
+      const bus = getEventBus();
+      bus.emit({ type: "frame", t: this.time.now, fps, entities });
+      bus.updateSnapshot({ fps, entities });
+    }
+
     this.hud.update(this, {
       level: this.level,
       world: this.world.id,
       score: this.score,
       lives: this.lives,
-      entities:
-        this.melons.countActive(true) +
-        this.bullets.countActive(true) +
-        this.pickups.countActive(true),
+      entities,
     });
   }
 
@@ -583,14 +617,19 @@ export class GameScene extends Phaser.Scene {
     const id = pickup.pickupId;
     pickup.despawn();
 
+    this.grantAbility(ability);
+
+    const bus = getEventBus();
+    bus.emit({ type: "powerup-collect", t: this.time.now, id, ability });
+  }
+
+  /** Activate a special ability (pickup catch or bridge cheat). */
+  private grantAbility(ability: AbilityType): void {
     this.activeAbility = ability;
     this.abilityExpiresAt = this.time.now + ABILITY_DURATION_MS;
     sfx.play("powerup");
     this.gameHud.setAbility(ability);
-
-    const bus = getEventBus();
-    bus.emit({ type: "powerup-collect", t: this.time.now, id, ability });
-    bus.updateSnapshot({ ability });
+    getEventBus().updateSnapshot({ ability });
   }
 
   /** A killed megamelon bursts into a ring of small melons. */
@@ -608,6 +647,7 @@ export class GameScene extends Phaser.Scene {
         steerAccel: this.tuning.meloSteerAccel * 0.5,
         maxSpeed: this.tuning.meloMaxSpeed,
         pathPattern: "straight",
+        timeScale: this.cfg.timeScale,
       });
       getEventBus().emit({
         type: "spawn",

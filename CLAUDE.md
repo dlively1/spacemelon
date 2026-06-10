@@ -83,6 +83,8 @@ of scraping pixels.
 | `debug`      | `1` / `true`   | off        | Show HUD + Arcade physics debug.                      |
 | `paused`     | `1` / `true`   | off        | Boot paused (useful for screenshot framing).          |
 | `muted`      | `1` / `true`   | off        | Disable sound effects (in-game, press `M` to toggle). |
+| `timeScale`  | float 1–8      | `1`        | Run the whole game N× faster (for slow e2e tests).    |
+| `stress`     | `1` / `true`   | off        | Worst-case spawn load that never clears (perf test).  |
 
 Example: `http://localhost:5173/?seed=42&level=3&autoplay=1&invincible=1&debug=1`
 
@@ -98,10 +100,17 @@ window.__SPACEMELON = {
   input: {                      // headless input
     left(down), right(down), fire(down), pause()
   },
+  cheat: {                      // test shortcuts — jump to a state
+    grantAbility(ability), clearLevel()
+  },
   waitFor(predicate, timeoutMs?),     // resolves with snapshot
   waitForEvent(type, timeoutMs?),     // resolves with first matching event
 };
 ```
+
+`snapshot.fps` / `snapshot.entities` update ~4Hz via always-on `frame` events
+— `tests/perf.spec.ts` asserts an fps budget under `?stress=1` load so perf
+regressions fail CI instead of landing silently.
 
 ### Event types
 

@@ -19,6 +19,10 @@ export interface WatermelonOpts {
   // oscillate in lockstep. Callers should derive it from the seeded Rng —
   // gameplay code must stay deterministic (no Math.random()).
   wavePhase?: number;
+  // Game-speed multiplier (AgentConfig.timeScale). preUpdate's steering math
+  // integrates against the raw loop delta, which the physics/clock scaling
+  // doesn't touch — so it must be applied here too.
+  timeScale?: number;
 }
 
 const FLASH_TINT = 0xffffff;
@@ -41,6 +45,7 @@ export class Watermelon extends Phaser.Physics.Arcade.Sprite {
   private pathPattern: PathPattern = "straight";
   private waveAmplitude = 70;
   private pathPhase = 0;
+  private timeScale = 1;
   // Melons spawn just outside the play area and "drift in." They can't be
   // killed until their sprite touches the visible area, so the player never
   // gets credit for off-screen blasts.
@@ -69,6 +74,7 @@ export class Watermelon extends Phaser.Physics.Arcade.Sprite {
     this.pathPattern = opts.pathPattern ?? "straight";
     this.waveAmplitude = opts.waveAmplitude ?? 70;
     this.pathPhase = opts.wavePhase ?? 0;
+    this.timeScale = opts.timeScale ?? 1;
     this.vulnerable = false;
 
     const scale = opts.scale ?? (this.mega ? 4 : 2);
@@ -124,7 +130,7 @@ export class Watermelon extends Phaser.Physics.Arcade.Sprite {
 
     const body = this.body as Phaser.Physics.Arcade.Body | null;
     if (body) {
-      const dt = delta * 0.001;
+      const dt = delta * 0.001 * this.timeScale;
       if (this.target && this.target.active !== false) {
         // Gentle homing toward the target.
         const dx = this.target.x - this.x;
