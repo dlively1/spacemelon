@@ -85,6 +85,8 @@ declare global {
 }
 
 const MAX_EVENTS = 2000;
+// Let the buffer overshoot by this much before trimming back to MAX_EVENTS.
+const TRIM_SLACK = 256;
 
 class EventBus {
   private bridge: GameBridge;
@@ -165,7 +167,13 @@ class EventBus {
     event.t = performance.now();
     const events = this.bridge.events;
     events.push(event);
-    if (events.length > MAX_EVENTS) events.splice(0, events.length - MAX_EVENTS);
+    // Trim in amortized batches: a splice/slice per emit once the buffer is
+    // full would shift the whole array on every event during heavy play.
+    // Consumers read `bridge.events` fresh each access, so swapping the
+    // array identity here is safe.
+    if (events.length > MAX_EVENTS + TRIM_SLACK) {
+      this.bridge.events = events.slice(events.length - MAX_EVENTS);
+    }
     for (const fn of this.listeners) fn(event);
   }
 
