@@ -53,7 +53,11 @@ export function installFavicon(): void {
       px(x, y, PAL.rindStripe);
       // 2px wide at outer edge
       if (t > R - 4) {
-        px(Math.round(cx + sx * t) + Math.round(-sy), Math.round(cy + sy * t) + Math.round(sx), PAL.rindStripe);
+        px(
+          Math.round(cx + sx * t) + Math.round(-sy),
+          Math.round(cy + sy * t) + Math.round(sx),
+          PAL.rindStripe,
+        );
       }
     }
   }

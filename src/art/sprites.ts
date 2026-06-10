@@ -13,7 +13,7 @@ export const TEX = {
   shockwave: "tex:shockwave",
   seed: "tex:seed",
   powerLaser: "tex:power:laser", // glowing green cylinder — multi-laser ability
-  powerBomb: "tex:power:bomb",   // glowing green cylinder — area-blast ability
+  powerBomb: "tex:power:bomb", // glowing green cylinder — area-blast ability
 } as const;
 
 // 28x30 ship — "Twin-Fang Cruiser": a beefy Galaga gunship. Central fuselage
@@ -92,9 +92,9 @@ function drawShip(scene: Phaser.Scene, thrusting: boolean, key: string): void {
 function drawBullet(scene: Phaser.Scene): void {
   const pc = new PixelCanvas(6, 14);
   const legend = {
-    "c": PAL.bulletCore,
-    "g": PAL.bulletGlow,
-    "e": PAL.bulletEdge,
+    c: PAL.bulletCore,
+    g: PAL.bulletGlow,
+    e: PAL.bulletEdge,
   };
   const grid = [
     "..cc..",
@@ -153,9 +153,12 @@ function drawWatermelon(scene: Phaser.Scene): void {
         // Lambert-ish term: +1 fully lit (upper-left), -1 in shadow.
         const nl = (-nx - ny) / Math.SQRT2;
         let color: number;
-        if (n > 0.93) color = PAL.rindDark; // crisp rim
-        else if (nl > 0.45) color = PAL.rindLight; // lit cap
-        else if (nl > -0.6) color = PAL.rindMid; // body (most of it)
+        if (n > 0.93)
+          color = PAL.rindDark; // crisp rim
+        else if (nl > 0.45)
+          color = PAL.rindLight; // lit cap
+        else if (nl > -0.6)
+          color = PAL.rindMid; // body (most of it)
         else color = PAL.rindDark; // thin shaded crescent, lower-right
         sheet.px(off + x, y, color);
       }
@@ -207,11 +210,11 @@ function drawWatermelon(scene: Phaser.Scene): void {
 function drawPowerCylinder(scene: Phaser.Scene, key: string, glyph: "laser" | "bomb"): void {
   const pc = new PixelCanvas(12, 18);
   const legend = {
-    "e": PAL.powerEdge,
-    "m": PAL.powerMid,
-    "l": PAL.powerLight,
-    "c": PAL.powerCore,
-    "g": PAL.powerGlyph,
+    e: PAL.powerEdge,
+    m: PAL.powerMid,
+    l: PAL.powerLight,
+    c: PAL.powerCore,
+    g: PAL.powerGlyph,
   };
   // Rounded capsule body with a vertical core-light stripe.
   const base = [
@@ -238,22 +241,11 @@ function drawPowerCylinder(scene: Phaser.Scene, key: string, glyph: "laser" | "b
   // Inner glyph overlaid on the body center.
   if (glyph === "laser") {
     // Three short vertical bars.
-    const bars = [
-      "g.g.g",
-      "g.g.g",
-      "g.g.g",
-      "g.g.g",
-    ];
+    const bars = ["g.g.g", "g.g.g", "g.g.g", "g.g.g"];
     pc.stamp(4, 7, bars, legend);
   } else {
     // Radiating burst (star).
-    const burst = [
-      "..g..",
-      "g.g.g",
-      ".ggg.",
-      "g.g.g",
-      "..g..",
-    ];
+    const burst = ["..g..", "g.g.g", ".ggg.", "g.g.g", "..g.."];
     pc.stamp(4, 6, burst, legend);
   }
   pc.registerTexture(scene, key);
@@ -297,12 +289,12 @@ function drawSeed(scene: Phaser.Scene): void {
 function drawWatermelonChunk(scene: Phaser.Scene): void {
   const pc = new PixelCanvas(16, 12);
   const legend = {
-    "R": PAL.flesh,
-    "H": PAL.fleshLight,
-    "s": PAL.seed,
-    "l": PAL.rindLight,
-    "m": PAL.rindMid,
-    "d": PAL.rindDark,
+    R: PAL.flesh,
+    H: PAL.fleshLight,
+    s: PAL.seed,
+    l: PAL.rindLight,
+    m: PAL.rindMid,
+    d: PAL.rindDark,
   };
   const grid = [
     "RRRRRRRRRRRRRRRR",

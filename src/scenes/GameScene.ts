@@ -221,9 +221,10 @@ export class GameScene extends Phaser.Scene {
     // from a side edge for flanking pressure. Spawn just outside the play
     // area so melons drift into view quickly — the vulnerability gate in
     // Watermelon makes sure they can't be killed until they're on-screen.
-    const side = this.rng.next() < this.tuning.sideSpawnChance
-      ? this.rng.pick(["left", "right"] as const)
-      : "top";
+    const side =
+      this.rng.next() < this.tuning.sideSpawnChance
+        ? this.rng.pick(["left", "right"] as const)
+        : "top";
     let x: number;
     let y: number;
     if (side === "top") {
@@ -257,7 +258,11 @@ export class GameScene extends Phaser.Scene {
   }
 
   /** Build a watermelon (small or mega) aimed at the ship. */
-  private makeMelon(x: number, y: number, opts: { mega: boolean; speedScale?: number }): Watermelon {
+  private makeMelon(
+    x: number,
+    y: number,
+    opts: { mega: boolean; speedScale?: number },
+  ): Watermelon {
     const t = this.tuning;
     const dx = this.ship.x - x;
     const dy = this.ship.y - y;
@@ -280,6 +285,7 @@ export class GameScene extends Phaser.Scene {
       steerAccel: t.meloSteerAccel * (opts.mega ? 0.6 : 1),
       maxSpeed: t.meloMaxSpeed * (opts.mega ? 0.7 : 1),
       pathPattern: t.meloPath,
+      wavePhase: this.rng.range(0, Math.PI * 2),
       mega: opts.mega,
       hp: opts.mega ? t.megaHp : 1,
     });
@@ -402,10 +408,8 @@ export class GameScene extends Phaser.Scene {
       world: this.world.id,
       score: this.score,
       lives: this.lives,
-      entities:
-        this.melons.getLength() + this.bullets.countActive(true) + this.pickups.getLength(),
+      entities: this.melons.getLength() + this.bullets.countActive(true) + this.pickups.getLength(),
     });
-
   }
 
   private fireBullet(): void {
@@ -429,7 +433,11 @@ export class GameScene extends Phaser.Scene {
 
   /** Pull a bullet from the pool, launch it, and tag it explosive if needed. */
   private spawnBullet(vx: number, vy: number, explosive = false): void {
-    const b = this.bullets.get(this.ship.x, this.ship.y - 24, TEX.bullet) as Phaser.Physics.Arcade.Sprite | null;
+    const b = this.bullets.get(
+      this.ship.x,
+      this.ship.y - 24,
+      TEX.bullet,
+    ) as Phaser.Physics.Arcade.Sprite | null;
     if (!b) return;
     b.setActive(true).setVisible(true);
     b.setScale(2);
@@ -661,7 +669,10 @@ export class GameScene extends Phaser.Scene {
   }
 
   private spawnExplosion(x: number, y: number, magnitude: number = 1): void {
-    const ring = this.add.image(x, y, TEX.shockwave).setScale(0.5 * magnitude).setBlendMode(Phaser.BlendModes.ADD);
+    const ring = this.add
+      .image(x, y, TEX.shockwave)
+      .setScale(0.5 * magnitude)
+      .setBlendMode(Phaser.BlendModes.ADD);
     this.tweens.add({
       targets: ring,
       scale: 3 * magnitude,
@@ -765,7 +776,10 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
-  private buildGameOverPanel(opts: { newBest: boolean; bestScore: number }): Phaser.GameObjects.Container {
+  private buildGameOverPanel(opts: {
+    newBest: boolean;
+    bestScore: number;
+  }): Phaser.GameObjects.Container {
     const { width, height } = this.scale;
     const cx = width / 2;
     const cy = height / 2;
@@ -773,21 +787,30 @@ export class GameScene extends Phaser.Scene {
 
     const W = 280;
     const H = 240;
-    const bg = this.add
-      .rectangle(0, 0, W, H, 0x05030a, 0.85)
-      .setStrokeStyle(2, 0x9b3aff, 1);
+    const bg = this.add.rectangle(0, 0, W, H, 0x05030a, 0.85).setStrokeStyle(2, 0x9b3aff, 1);
     container.add(bg);
 
     const fmt = (n: number) => n.toString().padStart(6, "0");
     const label = (s: string) => s.padEnd(12, " ");
-    const lines: Array<{ text: string; y: number; size: number; color: string; stroke?: string }> = [
-      { text: "GAME OVER", y: -98, size: 28, color: "#ff7bd1", stroke: "#150033" },
-      { text: "─────────────────", y: -64, size: 12, color: "#9b3aff" },
-      { text: `${label("SCORE")}${fmt(this.score)}`, y: -38, size: 14, color: "#fff0a8" },
-      { text: `${label("LEVEL")}${this.level.toString().padStart(6, " ")}`, y: -18, size: 14, color: "#b8eaff" },
-      { text: `${label("MELONS")}${this.killedTotal.toString().padStart(6, " ")}`, y: 2, size: 14, color: "#77d76d" },
-      { text: "─────────────────", y: 24, size: 12, color: "#9b3aff" },
-    ];
+    const lines: Array<{ text: string; y: number; size: number; color: string; stroke?: string }> =
+      [
+        { text: "GAME OVER", y: -98, size: 28, color: "#ff7bd1", stroke: "#150033" },
+        { text: "─────────────────", y: -64, size: 12, color: "#9b3aff" },
+        { text: `${label("SCORE")}${fmt(this.score)}`, y: -38, size: 14, color: "#fff0a8" },
+        {
+          text: `${label("LEVEL")}${this.level.toString().padStart(6, " ")}`,
+          y: -18,
+          size: 14,
+          color: "#b8eaff",
+        },
+        {
+          text: `${label("MELONS")}${this.killedTotal.toString().padStart(6, " ")}`,
+          y: 2,
+          size: 14,
+          color: "#77d76d",
+        },
+        { text: "─────────────────", y: 24, size: 12, color: "#9b3aff" },
+      ];
     for (const l of lines) {
       const t = this.add
         .text(0, l.y, l.text, {

@@ -14,16 +14,22 @@ a symlink to this file — keep both in sync by editing only `CLAUDE.md`.
 
 ## Commands
 
-| Script | What it does |
-|---|---|
-| `pnpm install` | Install deps. |
-| `pnpm test:install` | One-time: install Playwright chromium + system deps. |
-| `pnpm dev` | Vite dev server at http://localhost:5173. |
-| `pnpm build` | Type-check + production build to `dist/`. |
-| `pnpm preview` | Serve the production build on :4173 (used by Playwright). |
-| `pnpm test` | Run Playwright tests (auto-boots `pnpm build && pnpm preview`). |
-| `pnpm test:ui` | Interactive Playwright UI mode. |
-| `pnpm typecheck` | `tsc --noEmit`. |
+| Script              | What it does                                                    |
+| ------------------- | --------------------------------------------------------------- |
+| `pnpm install`      | Install deps.                                                   |
+| `pnpm test:install` | One-time: install Playwright chromium + system deps.            |
+| `pnpm dev`          | Vite dev server at http://localhost:5173.                       |
+| `pnpm build`        | Type-check + production build to `dist/`.                       |
+| `pnpm preview`      | Serve the production build on :4173 (used by Playwright).       |
+| `pnpm test`         | Run Playwright tests (auto-boots `pnpm build && pnpm preview`). |
+| `pnpm test:ui`      | Interactive Playwright UI mode.                                 |
+| `pnpm typecheck`    | `tsc --noEmit`.                                                 |
+| `pnpm lint`         | ESLint — includes the `Math.random()` ban in `src/`.            |
+| `pnpm format`       | Prettier write (`format:check` is what CI runs).                |
+
+If the environment can't download Playwright's pinned browser (sandboxed
+sessions), point the suite at a preinstalled Chromium:
+`PLAYWRIGHT_CHROMIUM_PATH=/path/to/chrome pnpm test`.
 
 ## Repository map
 
@@ -68,15 +74,15 @@ of scraping pixels.
 
 ### URL params (all optional)
 
-| Param | Type | Default | Notes |
-|---|---|---|---|
-| `seed` | int or `0xHEX` | `0xC0FFEE` | Feeds the deterministic RNG everywhere. |
-| `level` | int | `1` | Start on a specific level / world. |
-| `autoplay` | `1` / `true` | off | Skip the menu and start the game immediately. |
-| `invincible` | `1` / `true` | off | Ship ignores watermelon collisions. |
-| `debug` | `1` / `true` | off | Show HUD + Arcade physics debug. |
-| `paused` | `1` / `true` | off | Boot paused (useful for screenshot framing). |
-| `muted` | `1` / `true` | off | Disable sound effects (in-game, press `M` to toggle). |
+| Param        | Type           | Default    | Notes                                                 |
+| ------------ | -------------- | ---------- | ----------------------------------------------------- |
+| `seed`       | int or `0xHEX` | `0xC0FFEE` | Feeds the deterministic RNG everywhere.               |
+| `level`      | int            | `1`        | Start on a specific level / world.                    |
+| `autoplay`   | `1` / `true`   | off        | Skip the menu and start the game immediately.         |
+| `invincible` | `1` / `true`   | off        | Ship ignores watermelon collisions.                   |
+| `debug`      | `1` / `true`   | off        | Show HUD + Arcade physics debug.                      |
+| `paused`     | `1` / `true`   | off        | Boot paused (useful for screenshot framing).          |
+| `muted`      | `1` / `true`   | off        | Disable sound effects (in-game, press `M` to toggle). |
 
 Example: `http://localhost:5173/?seed=42&level=3&autoplay=1&invincible=1&debug=1`
 
@@ -124,7 +130,9 @@ Prefer these helpers — they keep tests readable and centralize bridge churn.
 ## Conventions
 
 - **Determinism first.** Any randomness goes through `Rng` seeded from
-  `AgentConfig.seed`. Never call `Math.random()` in gameplay code.
+  `AgentConfig.seed`. Never call `Math.random()` in gameplay code — ESLint
+  enforces this (`no-restricted-properties` in `eslint.config.js`; only
+  `src/audio/` is exempt).
 - **Add events for new state.** If you add a feature an agent might want to
   observe (boss spawned, power-up collected, etc.), add a new variant to
   `GameEvent` and emit it. Then update `gameClient.ts` if a higher-level helper

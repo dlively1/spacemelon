@@ -23,13 +23,13 @@ type Wave = OscillatorType;
 
 interface ToneOpts {
   freq: number;
-  endFreq?: number;     // slide from freq → endFreq across duration
-  wave?: Wave;          // default "square"
-  duration: number;     // seconds
-  attack?: number;      // seconds (default 0.005)
-  release?: number;     // seconds (default duration)
-  volume?: number;      // 0..1 (default 0.15)
-  detune?: number;      // cents
+  endFreq?: number; // slide from freq → endFreq across duration
+  wave?: Wave; // default "square"
+  duration: number; // seconds
+  attack?: number; // seconds (default 0.005)
+  release?: number; // seconds (default duration)
+  volume?: number; // 0..1 (default 0.15)
+  detune?: number; // cents
 }
 
 class Sfx {
@@ -145,48 +145,36 @@ class Sfx {
       switch (name) {
         case "fire":
           // Quick high pew descending — classic shooter blip.
-          this.tone(
-            { freq: 980, endFreq: 420, wave: "square", duration: 0.08, volume: 0.08 },
-            now
-          );
+          this.tone({ freq: 980, endFreq: 420, wave: "square", duration: 0.08, volume: 0.08 }, now);
           break;
         case "hit":
           // Sharp short pluck on a watermelon pop.
           this.tone(
             { freq: 520, endFreq: 220, wave: "triangle", duration: 0.1, volume: 0.16 },
-            now
+            now,
           );
           this.noiseBurst(0.06, 0.06, now, 2400);
           break;
         case "megaHit":
           // Non-killing mega hit — meatier thud.
-          this.tone(
-            { freq: 280, endFreq: 180, wave: "square", duration: 0.12, volume: 0.18 },
-            now
-          );
+          this.tone({ freq: 280, endFreq: 180, wave: "square", duration: 0.12, volume: 0.18 }, now);
           break;
         case "megaDestroy":
           // Big boom: low sweep + noise burst.
-          this.tone(
-            { freq: 220, endFreq: 60, wave: "sawtooth", duration: 0.35, volume: 0.2 },
-            now
-          );
+          this.tone({ freq: 220, endFreq: 60, wave: "sawtooth", duration: 0.35, volume: 0.2 }, now);
           this.noiseBurst(0.32, 0.18, now, 900);
           break;
         case "shipHit":
           // Player damage — sad descending wobble.
           this.tone(
             { freq: 360, endFreq: 90, wave: "sawtooth", duration: 0.45, volume: 0.18 },
-            now
+            now,
           );
           this.noiseBurst(0.2, 0.08, now + 0.05, 1200);
           break;
         case "escape":
           // Bummer — descending blip in a minor flavor.
-          this.tone(
-            { freq: 320, endFreq: 140, wave: "square", duration: 0.18, volume: 0.1 },
-            now
-          );
+          this.tone({ freq: 320, endFreq: 140, wave: "square", duration: 0.18, volume: 0.1 }, now);
           break;
         case "levelStart":
           // Three-note rising arpeggio.
@@ -209,17 +197,26 @@ class Sfx {
           this.tone({ freq: 220, wave: "sawtooth", duration: 0.55, volume: 0.16 }, now + 0.6);
           break;
         case "restart":
-          this.tone({ freq: 660, endFreq: 1320, wave: "square", duration: 0.18, volume: 0.12 }, now);
+          this.tone(
+            { freq: 660, endFreq: 1320, wave: "square", duration: 0.18, volume: 0.12 },
+            now,
+          );
           break;
         case "powerup":
           // Bright rising power-up chime — "you got something good".
           this.tone({ freq: 660, wave: "square", duration: 0.08, volume: 0.12 }, now);
           this.tone({ freq: 990, wave: "square", duration: 0.08, volume: 0.12 }, now + 0.08);
-          this.tone({ freq: 1320, endFreq: 1760, wave: "square", duration: 0.16, volume: 0.14 }, now + 0.16);
+          this.tone(
+            { freq: 1320, endFreq: 1760, wave: "square", duration: 0.16, volume: 0.14 },
+            now + 0.16,
+          );
           break;
         case "bomb":
           // Heavy area-blast detonation — deep sweep + long noise.
-          this.tone({ freq: 180, endFreq: 40, wave: "sawtooth", duration: 0.45, volume: 0.22 }, now);
+          this.tone(
+            { freq: 180, endFreq: 40, wave: "sawtooth", duration: 0.45, volume: 0.22 },
+            now,
+          );
           this.noiseBurst(0.4, 0.22, now, 700);
           break;
       }

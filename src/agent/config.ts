@@ -9,7 +9,7 @@ export interface AgentConfig {
 }
 
 const DEFAULTS: AgentConfig = {
-  seed: 0xC0FFEE,
+  seed: 0xc0ffee,
   startLevel: 1,
   debug: false,
   autoplay: false,

@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 import { bootGame, snapshot, waitForEvent, waitForScene } from "./helpers/gameClient";
 
 test("boots and reaches menu", async ({ page }) => {
-  await bootGame(page, { seed: 0xC0FFEE });
+  await bootGame(page, { seed: 0xc0ffee });
   const boot = await waitForEvent(page, "boot");
   expect(boot.t).toBeGreaterThanOrEqual(0);
   await waitForScene(page, "menu");
@@ -21,7 +21,7 @@ test("autoplay transitions into game scene and starts a level", async ({ page })
 
 test("captures a screenshot per world for the first three levels", async ({ page }, testInfo) => {
   for (let level = 1; level <= 3; level++) {
-    await bootGame(page, { seed: 0xC0FFEE + level, level, autoplay: true, invincible: true });
+    await bootGame(page, { seed: 0xc0ffee + level, level, autoplay: true, invincible: true });
     await waitForEvent(page, "level-start");
     // Let the world breathe a moment for parallax + spawns.
     await page.waitForTimeout(800);

@@ -8,12 +8,35 @@ export type GameEvent =
   | { type: "scene"; t: number; name: string }
   | { type: "level-start"; t: number; level: number; world: string }
   | { type: "level-clear"; t: number; level: number }
-  | { type: "spawn"; t: number; kind: "watermelon"; id: number; x: number; y: number; mega: boolean }
-  | { type: "hit"; t: number; targetId: number; kind: "watermelon"; destroyed: boolean; mega: boolean }
+  | {
+      type: "spawn";
+      t: number;
+      kind: "watermelon";
+      id: number;
+      x: number;
+      y: number;
+      mega: boolean;
+    }
+  | {
+      type: "hit";
+      t: number;
+      targetId: number;
+      kind: "watermelon";
+      destroyed: boolean;
+      mega: boolean;
+    }
   | { type: "escape"; t: number; targetId: number; mega: boolean; penalty: number }
   | { type: "score"; t: number; score: number }
   | { type: "lives"; t: number; lives: number }
-  | { type: "game-over"; t: number; score: number; level: number; killedTotal: number; newBest: boolean; bestScore: number }
+  | {
+      type: "game-over";
+      t: number;
+      score: number;
+      level: number;
+      killedTotal: number;
+      newBest: boolean;
+      bestScore: number;
+    }
   | { type: "restart"; t: number }
   | { type: "powerup-spawn"; t: number; id: number; x: number; y: number; ability: AbilityType }
   | { type: "powerup-collect"; t: number; id: number; ability: AbilityType }
@@ -51,7 +74,7 @@ export interface GameBridge {
   waitFor: (predicate: (s: GameSnapshot) => boolean, timeoutMs?: number) => Promise<GameSnapshot>;
   waitForEvent: <T extends GameEvent["type"]>(
     type: T,
-    timeoutMs?: number
+    timeoutMs?: number,
   ) => Promise<Extract<GameEvent, { type: T }>>;
 }
 
