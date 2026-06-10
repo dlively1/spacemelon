@@ -23,51 +23,45 @@ export interface WatermelonOpts {
 
 const FLASH_TINT = 0xffffff;
 
+// Pooled enemy: instances are created by the scene's physics group and reused
+// via spawn()/despawn() instead of being constructed and destroyed per melon.
+// All per-melon state must be (re)assigned in spawn() — nothing gameplay-
+// relevant may live only in the constructor.
 export class Watermelon extends Phaser.Physics.Arcade.Sprite {
   static nextId = 1;
 
-  readonly meloId: number;
-  readonly mega: boolean;
-  hp: number;
-  spin: number;
+  meloId = 0;
+  mega = false;
+  hp = 1;
+  spin = 0;
 
-  private steerAccel: number;
-  private maxSpeed: number;
+  private steerAccel = 40;
+  private maxSpeed = 260;
   private target?: Phaser.GameObjects.GameObject & { x: number; y: number };
-  private pathPattern: PathPattern;
-  private waveAmplitude: number;
-  private pathPhase: number;
-  // Spawn velocity, re-asserted on the first preUpdate — see the note there.
-  private launchVx: number;
-  private launchVy: number;
-  private launched = false;
+  private pathPattern: PathPattern = "straight";
+  private waveAmplitude = 70;
+  private pathPhase = 0;
   // Melons spawn just outside the play area and "drift in." They can't be
   // killed until their sprite touches the visible area, so the player never
   // gets credit for off-screen blasts.
   private vulnerable = false;
 
-  constructor(scene: Phaser.Scene, x: number, y: number, opts: WatermelonOpts) {
+  constructor(scene: Phaser.Scene, x: number, y: number) {
     super(scene, x, y, TEX.watermelonSlice, 0);
-    scene.add.existing(this);
-    scene.physics.add.existing(this);
+  }
 
-    this.mega = !!opts.mega;
-    this.hp = opts.hp ?? (this.mega ? 4 : 1);
-    const scale = opts.scale ?? (this.mega ? 4 : 2);
-    this.setScale(scale);
-
-    const body = this.body as Phaser.Physics.Arcade.Body;
-    // Body radius is in source pixels and doesn't auto-scale with the sprite,
-    // so scale it ourselves. Normal melon (scale 2) keeps r=12 / offset=2;
-    // mega (scale 4) gets r=24 / offset=4 so collision matches visible size.
-    const scaleRatio = scale / 2;
-    body.setCircle(12 * scaleRatio, 2 * scaleRatio, 2 * scaleRatio);
-    this.launchVx = opts.vx;
-    this.launchVy = opts.vy;
-    body.setVelocity(opts.vx, opts.vy);
-    body.setAllowGravity(false);
+  /** (Re)activate this pooled melon at (x, y) with fresh per-spawn state. */
+  spawn(x: number, y: number, opts: WatermelonOpts): this {
+    // enableBody resets position, re-adds the body to the physics world, and
+    // marks the sprite active+visible. Because this runs AFTER the group
+    // added the sprite, the velocity set below sticks — no first-update
+    // re-assert hack needed (the old constructor-based flow lost its spawn
+    // velocity to the group's body reset).
+    this.enableBody(true, x, y, true, true);
 
     this.meloId = Watermelon.nextId++;
+    this.mega = !!opts.mega;
+    this.hp = opts.hp ?? (this.mega ? 4 : 1);
     this.spin = opts.spin;
     this.target = opts.target;
     this.steerAccel = opts.steerAccel ?? 40;
@@ -75,8 +69,30 @@ export class Watermelon extends Phaser.Physics.Arcade.Sprite {
     this.pathPattern = opts.pathPattern ?? "straight";
     this.waveAmplitude = opts.waveAmplitude ?? 70;
     this.pathPhase = opts.wavePhase ?? 0;
+    this.vulnerable = false;
 
-    if (this.mega) this.setDepth(50); // draw mega above small melons
+    const scale = opts.scale ?? (this.mega ? 4 : 2);
+    this.setScale(scale);
+    this.clearTint();
+    this.setRotation(0);
+    // Draw megas above small melons; reset for reused small melons.
+    this.setDepth(this.mega ? 50 : 0);
+
+    const body = this.body as Phaser.Physics.Arcade.Body;
+    // Body radius is in source pixels and doesn't auto-scale with the sprite,
+    // so scale it ourselves. Normal melon (scale 2) keeps r=12 / offset=2;
+    // mega (scale 4) gets r=24 / offset=4 so collision matches visible size.
+    const scaleRatio = scale / 2;
+    body.setCircle(12 * scaleRatio, 2 * scaleRatio, 2 * scaleRatio);
+    body.setVelocity(opts.vx, opts.vy);
+    body.setAllowGravity(false);
+
+    return this;
+  }
+
+  /** Deactivate and return to the pool (does not destroy). */
+  despawn(): void {
+    this.disableBody(true, true);
   }
 
   /** True once any part of the sprite has touched the visible play area. */
@@ -108,15 +124,6 @@ export class Watermelon extends Phaser.Physics.Arcade.Sprite {
 
     const body = this.body as Phaser.Physics.Arcade.Body | null;
     if (body) {
-      if (!this.launched) {
-        // Phaser's Arcade physics Group resets a body to the group's (zero)
-        // velocity defaults when the sprite is add()'ed — which happens AFTER
-        // our constructor set the spawn velocity. Re-assert it on the first
-        // update so melons actually drift in. Without this, L1 melons (which
-        // have no homing accel to mask the lost velocity) sit frozen offscreen.
-        body.setVelocity(this.launchVx, this.launchVy);
-        this.launched = true;
-      }
       const dt = delta * 0.001;
       if (this.target && this.target.active !== false) {
         // Gentle homing toward the target.

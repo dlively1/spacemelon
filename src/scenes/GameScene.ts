@@ -238,7 +238,7 @@ export class GameScene extends Phaser.Scene {
       y = this.rng.range(60, height * 0.6);
     }
 
-    this.melons.add(this.makeMelon(x, y, { mega: false }));
+    this.makeMelon(x, y, { mega: false });
     this.spawnedThisLevel++;
   }
 
@@ -252,17 +252,17 @@ export class GameScene extends Phaser.Scene {
       // in immediately; vulnerability gate still keeps it un-killable until
       // it's actually visible.
       const y = -30;
-      this.melons.add(this.makeMelon(x, y, { mega: true }));
+      this.makeMelon(x, y, { mega: true });
       this.megaCueIdx++;
     }
   }
 
-  /** Build a watermelon (small or mega) aimed at the ship. */
+  /** Pull a watermelon (small or mega) from the pool, aimed at the ship. */
   private makeMelon(
     x: number,
     y: number,
     opts: { mega: boolean; speedScale?: number },
-  ): Watermelon {
+  ): Watermelon | null {
     const t = this.tuning;
     const dx = this.ship.x - x;
     const dy = this.ship.y - y;
@@ -277,7 +277,9 @@ export class GameScene extends Phaser.Scene {
     const vy = Math.sin(angle) * speed;
     const spin = this.rng.range(-2.5, 2.5);
 
-    const m = new Watermelon(this, x, y, {
+    const m = this.melons.get() as Watermelon | null;
+    if (!m) return null;
+    m.spawn(x, y, {
       vx,
       vy,
       spin,
@@ -340,10 +342,8 @@ export class GameScene extends Phaser.Scene {
       }
       return true;
     });
-    // Collect off-screen melons first, then act on them AFTER iterating.
-    // Destroying a melon removes it from the group mid-iteration, which shifts
-    // the entries array and hands `iterate` an undefined entry on the next
-    // step — that's the crash that fired when a melon drifted off the bottom.
+    // Collect off-screen melons first, then act on them AFTER iterating —
+    // escape handling can shatter/spawn melons, which mutates the group.
     const escaped: Watermelon[] = [];
     const culled: Watermelon[] = [];
     this.melons.children.iterate((obj) => {
@@ -363,7 +363,7 @@ export class GameScene extends Phaser.Scene {
       return true;
     });
     for (const m of escaped) this.onMelonEscaped(m);
-    for (const m of culled) m.destroy();
+    for (const m of culled) m.despawn();
 
     // Expire the active ability and drain its HUD timer.
     if (this.activeAbility) {
@@ -390,7 +390,7 @@ export class GameScene extends Phaser.Scene {
       }
       return true;
     });
-    for (const p of deadPickups) p.destroy();
+    for (const p of deadPickups) p.despawn();
 
     // Unstick: spawn cap exhausted and no melons remain — the level can never
     // be cleared through kills, so advance anyway.
@@ -398,7 +398,7 @@ export class GameScene extends Phaser.Scene {
       !this.gameOverActive &&
       !this.levelTransitioning &&
       this.spawnedThisLevel >= this.tuning.totalSpawnsCap &&
-      this.melons.getLength() === 0
+      this.melons.countActive(true) === 0
     ) {
       this.advanceLevel();
     }
@@ -408,7 +408,10 @@ export class GameScene extends Phaser.Scene {
       world: this.world.id,
       score: this.score,
       lives: this.lives,
-      entities: this.melons.getLength() + this.bullets.countActive(true) + this.pickups.getLength(),
+      entities:
+        this.melons.countActive(true) +
+        this.bullets.countActive(true) +
+        this.pickups.countActive(true),
     });
   }
 
@@ -515,7 +518,7 @@ export class GameScene extends Phaser.Scene {
     this.gameHud.popScore(x, y, award);
     this.spawnExplosion(x, y, wasMega ? 2 : 1);
     if (wasMega) this.shatterIntoSmallMelons(x, y);
-    melon.destroy();
+    melon.despawn();
 
     // Chance to drop a power-up cylinder (0 before level 3).
     if (this.rng.next() < this.tuning.powerupDropChance) this.spawnPickup(x, y);
@@ -552,11 +555,12 @@ export class GameScene extends Phaser.Scene {
     for (const m of killed) this.killMelon(m);
   }
 
-  /** Spawn a power-up cylinder that drifts straight down from (x, y). */
+  /** Pull a power-up cylinder from the pool; it drifts straight down from (x, y). */
   private spawnPickup(x: number, y: number): void {
     const ability: AbilityType = this.rng.next() < 0.5 ? "multiLaser" : "areaBlast";
-    const p = new Pickup(this, x, y, { ability, vy: this.tuning.powerupFallSpeed });
-    this.pickups.add(p);
+    const p = this.pickups.get() as Pickup | null;
+    if (!p) return;
+    p.spawn(x, y, { ability, vy: this.tuning.powerupFallSpeed });
     getEventBus().emit({
       type: "powerup-spawn",
       t: this.time.now,
@@ -571,7 +575,7 @@ export class GameScene extends Phaser.Scene {
   private onShipGrabPickup(pickup: Pickup): void {
     const ability = pickup.ability;
     const id = pickup.pickupId;
-    pickup.destroy();
+    pickup.despawn();
 
     this.activeAbility = ability;
     this.abilityExpiresAt = this.time.now + ABILITY_DURATION_MS;
@@ -588,7 +592,9 @@ export class GameScene extends Phaser.Scene {
     for (let i = 0; i < MEGA_SHATTER_COUNT; i++) {
       const angle = (i / MEGA_SHATTER_COUNT) * Math.PI * 2 + this.rng.range(-0.15, 0.15);
       const speed = this.rng.range(140, 200);
-      const m = new Watermelon(this, x, y, {
+      const m = this.melons.get() as Watermelon | null;
+      if (!m) continue;
+      m.spawn(x, y, {
         vx: Math.cos(angle) * speed,
         vy: Math.sin(angle) * speed,
         spin: this.rng.range(-3, 3),
@@ -597,7 +603,6 @@ export class GameScene extends Phaser.Scene {
         maxSpeed: this.tuning.meloMaxSpeed,
         pathPattern: "straight",
       });
-      this.melons.add(m);
       getEventBus().emit({
         type: "spawn",
         t: this.time.now,
@@ -642,7 +647,7 @@ export class GameScene extends Phaser.Scene {
     if (this.cfg.invincible || this.gameOverActive) return;
     if (this.ship.isInvincible(this.time.now)) return;
     this.spawnExplosion(melon.x, melon.y);
-    melon.destroy();
+    melon.despawn();
     this.lives -= 1;
     const bus = getEventBus();
     bus.emit({ type: "lives", t: this.time.now, lives: this.lives });
@@ -730,8 +735,9 @@ export class GameScene extends Phaser.Scene {
     bus.emit({ type: "level-clear", t: this.time.now, level: this.level });
     sfx.play("levelClear");
     // Clear remaining melons + uncollected cylinders.
-    this.melons.clear(true, true);
-    this.pickups.clear(true, true);
+    // Despawn (don't destroy) so the pooled instances are reused next level.
+    for (const m of this.melons.getMatching("active", true) as Watermelon[]) m.despawn();
+    for (const p of this.pickups.getMatching("active", true) as Pickup[]) p.despawn();
     this.time.removeAllEvents();
     this.time.delayedCall(800, () => this.startLevel(this.level + 1));
   }
