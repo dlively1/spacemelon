@@ -26,6 +26,7 @@ a symlink to this file — keep both in sync by editing only `CLAUDE.md`.
 | `pnpm typecheck`    | `tsc --noEmit`.                                                 |
 | `pnpm lint`         | ESLint — includes the `Math.random()` ban in `src/`.            |
 | `pnpm format`       | Prettier write (`format:check` is what CI runs).                |
+| `pnpm test:unit`    | Vitest unit tests for pure logic (ms-fast, no browser).         |
 
 If the environment can't download Playwright's pinned browser (sandboxed
 sessions), point the suite at a preinstalled Chromium:
@@ -49,6 +50,9 @@ src/
     worlds.ts             WorldDef registry + buildBackground(scene, world, rng)
   levels/
     levels.ts             LevelTuning registry (spawn rate, speed, megas) + tuningForLevel
+  rules/
+    scoring.ts            Pure scoring rules (awards, penalties, floor-at-0)
+    progression.ts        Pure level-progression rules (mega cues, level clear)
   ui/
     GameHud.ts            Always-on lives + score overlay (separate from agent/hud.ts dev HUD)
   audio/
@@ -64,6 +68,8 @@ tests/
   helpers/gameClient.ts   Typed wrappers around the bridge for Playwright
   smoke.spec.ts           Boot + per-world screenshot capture
   gameplay.spec.ts        Fire → hit → level-up flow
+  perf.spec.ts            FPS budget under ?stress=1 load (own Playwright project)
+  unit/                   Vitest unit tests for pure logic (rules, levels, rng)
 ```
 
 ## The agent loop (THIS IS THE LOAD-BEARING PART)
@@ -118,10 +124,13 @@ regressions fail CI instead of landing silently.
 `score`, `lives`, `game-over`, `restart`, `frame`. All carry `t` (ms since
 boot). See `src/agent/events.ts` for exact shapes.
 
-**Scoring rules** live in `src/scenes/GameScene.ts` as constants:
+**Scoring rules** live in `src/rules/scoring.ts` (pure, unit-tested):
 small kill `+100`, mega hit `+50`, mega destroy `+500`. Letting a melon drift
 off the bottom of the screen penalizes the player (`escape` event):
 small `-50`, mega `-200`. Score floors at 0 — bad runs can't go negative.
+Mega-cue and level-clear logic is in `src/rules/progression.ts`. Prefer
+extending these pure modules (plus a Vitest test) over burying rules in
+`GameScene` — unit tests run in milliseconds, the e2e suite takes minutes.
 
 ### Test helpers
 

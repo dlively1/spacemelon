@@ -27,7 +27,8 @@ export default defineConfig({
   projects: [
     {
       name: "chromium",
-      testIgnore: "**/perf.spec.ts",
+      // unit/ belongs to Vitest (pnpm test:unit), not Playwright.
+      testIgnore: ["**/perf.spec.ts", "**/unit/**"],
       use: {
         ...devices["Desktop Chrome"],
         ...(chromiumPath ? { launchOptions: { executablePath: chromiumPath } } : {}),

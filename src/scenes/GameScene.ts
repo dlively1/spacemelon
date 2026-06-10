@@ -12,17 +12,12 @@ import { loadBestScore, saveBestScore } from "../agent/highscore";
 import { buildBackground, worldForLevel, type StarLayer, type WorldDef } from "../worlds/worlds";
 import { FxFactory } from "../fx/FxFactory";
 import { tuningForLevel, STRESS_TUNING, type LevelTuning } from "../levels/levels";
+import { SCORE, killAward, escapePenalty, applyScoreDelta } from "../rules/scoring";
+import { dueMegaCues, isLevelCleared } from "../rules/progression";
 import { sfx } from "../audio/sfx";
 
 const STARTING_LIVES = 3;
 const MEGA_SHATTER_COUNT = 6;
-const SCORE_SMALL_KILL = 100;
-const SCORE_MEGA_HIT = 50;
-const SCORE_MEGA_DESTROY = 500;
-// Penalties for letting melons drift past the ship — encourages aggressive play.
-// Score floors at 0 so a bad run can't go negative.
-const SCORE_SMALL_ESCAPE = -50;
-const SCORE_MEGA_ESCAPE = -200;
 // Ignore restart input for this long after game over so a mashed fire key
 // (SPACE) doesn't immediately kick off a fresh run.
 const RESTART_LOCK_MS = 1000;
@@ -273,8 +268,8 @@ export class GameScene extends Phaser.Scene {
 
   /** Spawn a megamelon at the top center if the schedule says it's time. */
   private maybeSpawnScheduledMega(): void {
-    const cues = this.tuning.megaSchedule;
-    while (this.megaCueIdx < cues.length && this.killedThisLevel >= cues[this.megaCueIdx].atKill) {
+    const due = dueMegaCues(this.tuning.megaSchedule, this.megaCueIdx, this.killedThisLevel);
+    for (let i = 0; i < due; i++) {
       const { width } = this.scale;
       const x = this.rng.range(width * 0.3, width * 0.7);
       // Just above the screen — at scale 4 the sprite is ~112px so it peeks
@@ -521,8 +516,8 @@ export class GameScene extends Phaser.Scene {
 
     if (!destroyed) {
       // Non-killing hit (only possible for megas right now).
-      this.score += SCORE_MEGA_HIT;
-      this.gameHud.popScore(melon.x, melon.y, SCORE_MEGA_HIT);
+      this.score = applyScoreDelta(this.score, SCORE.megaHit);
+      this.gameHud.popScore(melon.x, melon.y, SCORE.megaHit);
       bus.emit({ type: "score", t: this.time.now, score: this.score });
       bus.updateSnapshot({ score: this.score });
       this.gameHud.setScore(this.score);
@@ -540,18 +535,16 @@ export class GameScene extends Phaser.Scene {
     const x = melon.x;
     const y = melon.y;
 
-    let award: number;
+    const award = killAward(wasMega);
     if (wasMega) {
-      award = SCORE_MEGA_DESTROY;
       this.cameras.main.shake(140, 0.008);
       sfx.play("megaDestroy");
     } else {
-      award = SCORE_SMALL_KILL;
       this.killedThisLevel++;
       this.killedTotal++;
       sfx.play("hit");
     }
-    this.score += award;
+    this.score = applyScoreDelta(this.score, award);
     bus.emit({ type: "score", t: this.time.now, score: this.score });
     bus.updateSnapshot({ score: this.score });
     this.gameHud.setScore(this.score);
@@ -564,7 +557,7 @@ export class GameScene extends Phaser.Scene {
     if (this.rng.next() < this.tuning.powerupDropChance) this.spawnPickup(x, y);
 
     this.maybeSpawnScheduledMega();
-    if (this.killedThisLevel >= this.tuning.toClear) this.advanceLevel();
+    if (isLevelCleared(this.killedThisLevel, this.tuning.toClear)) this.advanceLevel();
   }
 
   /** Detonate an area blast: destroy/damage every vulnerable melon in radius. */
@@ -664,9 +657,8 @@ export class GameScene extends Phaser.Scene {
   /** A melon drifted off the bottom of the screen — penalize the player. */
   private onMelonEscaped(melon: Watermelon): void {
     if (this.gameOverActive) return;
-    const penalty = melon.mega ? SCORE_MEGA_ESCAPE : SCORE_SMALL_ESCAPE;
     const before = this.score;
-    this.score = Math.max(0, this.score + penalty);
+    this.score = applyScoreDelta(this.score, escapePenalty(melon.mega));
     const applied = this.score - before; // negative or zero (if floored)
 
     const bus = getEventBus();
