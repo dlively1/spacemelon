@@ -70,6 +70,13 @@ export interface GameBridge {
     fire: (down: boolean) => void;
     pause: () => void;
   };
+  // Test shortcuts — jump the game to a state instead of grinding toward it
+  // (e.g. grant an ability without organically catching a cylinder). Bound by
+  // GameScene; no-ops until a run is active.
+  cheat: {
+    grantAbility: (ability: AbilityType) => void;
+    clearLevel: () => void;
+  };
   // Wait helpers (resolve in the page context, awaitable from Playwright).
   waitFor: (predicate: (s: GameSnapshot) => boolean, timeoutMs?: number) => Promise<GameSnapshot>;
   waitForEvent: <T extends GameEvent["type"]>(
@@ -117,6 +124,10 @@ class EventBus {
         fire: () => {},
         pause: () => {},
       },
+      cheat: {
+        grantAbility: () => {},
+        clearLevel: () => {},
+      },
       waitFor: (predicate, timeoutMs = 10_000) =>
         new Promise((resolve, reject) => {
           if (predicate(this.bridge.snapshot)) {
@@ -157,6 +168,10 @@ class EventBus {
 
   bindInput(input: GameBridge["input"]): void {
     this.bridge.input = input;
+  }
+
+  bindCheats(cheat: GameBridge["cheat"]): void {
+    this.bridge.cheat = cheat;
   }
 
   emit(event: GameEvent): void {

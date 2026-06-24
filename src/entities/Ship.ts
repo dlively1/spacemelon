@@ -1,10 +1,12 @@
 import Phaser from "phaser";
 import { TEX } from "../art/sprites";
 
+const BASE_FIRE_COOLDOWN_MS = 180;
+
 export class Ship extends Phaser.Physics.Arcade.Sprite {
   speed = 320;
   private thrusting = false;
-  private fireCooldownMs = 180;
+  private fireCooldownMs = BASE_FIRE_COOLDOWN_MS;
   private nextFireAt = 0;
   private invincibleUntil = 0;
 
@@ -18,6 +20,13 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
     // nose tip, cannon tips, and thruster plume as forgiving margin.
     const body = this.body as Phaser.Physics.Arcade.Body;
     body.setSize(22, 22).setOffset(3, 6);
+  }
+
+  // Fire cooldown is measured against the raw update-loop clock, which the
+  // game-speed timeScale does NOT touch — so the scale must be applied here
+  // for fire rate to keep up with a sped-up game.
+  setTimeScale(scale: number): void {
+    this.fireCooldownMs = BASE_FIRE_COOLDOWN_MS / scale;
   }
 
   setThrust(on: boolean): void {

@@ -10,10 +10,12 @@ const chromiumPath = process.env.PLAYWRIGHT_CHROMIUM_PATH;
 
 export default defineConfig({
   testDir: "./tests",
-  fullyParallel: false,
+  // Tests are independent (each boots its own page against the shared static
+  // preview server), so they can run in parallel workers.
+  fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
-  workers: 1,
+  workers: process.env.CI ? 2 : undefined,
   reporter: process.env.CI ? [["github"], ["list"], ["html", { open: "never" }]] : "list",
   use: {
     baseURL: `http://127.0.0.1:${PORT}`,
@@ -25,6 +27,19 @@ export default defineConfig({
   projects: [
     {
       name: "chromium",
+      // unit/ belongs to Vitest (pnpm test:unit), not Playwright.
+      testIgnore: ["**/perf.spec.ts", "**/unit/**"],
+      use: {
+        ...devices["Desktop Chrome"],
+        ...(chromiumPath ? { launchOptions: { executablePath: chromiumPath } } : {}),
+      },
+    },
+    {
+      // The perf budget test measures frame rate, so it must not share CPU
+      // with parallel workers — it runs alone, after the functional suite.
+      name: "perf",
+      testMatch: "**/perf.spec.ts",
+      dependencies: ["chromium"],
       use: {
         ...devices["Desktop Chrome"],
         ...(chromiumPath ? { launchOptions: { executablePath: chromiumPath } } : {}),

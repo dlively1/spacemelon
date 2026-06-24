@@ -1,5 +1,6 @@
 import type { Page } from "@playwright/test";
 import type { GameSnapshot, GameEvent } from "../../src/agent/events";
+import type { AbilityType } from "../../src/entities/Pickup";
 
 export interface GameClientOptions {
   seed?: number;
@@ -10,6 +11,11 @@ export interface GameClientOptions {
   // Defaults to true — keeps headless chromium quiet and avoids AudioContext
   // gesture warnings. Set false for tests that want to assert audio behavior.
   muted?: boolean;
+  // Run the game N× faster (1–8). Use on tests that wait for organic
+  // progression (level clears, mega spawns) to cut wall-clock time.
+  timeScale?: number;
+  // Worst-case spawn load that never clears — for perf measurement.
+  stress?: boolean;
 }
 
 export async function bootGame(page: Page, opts: GameClientOptions = {}): Promise<void> {
@@ -20,6 +26,8 @@ export async function bootGame(page: Page, opts: GameClientOptions = {}): Promis
   if (opts.invincible) params.set("invincible", "1");
   if (opts.debug) params.set("debug", "1");
   if (opts.muted !== false) params.set("muted", "1");
+  if (opts.timeScale != null) params.set("timeScale", String(opts.timeScale));
+  if (opts.stress) params.set("stress", "1");
   const qs = params.toString();
   await page.goto(`/${qs ? `?${qs}` : ""}`);
   await page.waitForFunction(() => !!window.__SPACEMELON?.snapshot.ready, undefined, {
@@ -76,6 +84,15 @@ export async function waitForEventAfter<T extends GameEvent["type"]>(
     { timeout: timeoutMs },
   );
   return (await handle.jsonValue()) as Extract<GameEvent, { type: T }>;
+}
+
+// Bridge cheats — jump the game to a state instead of grinding toward it.
+export async function grantAbility(page: Page, ability: AbilityType): Promise<void> {
+  await page.evaluate((a) => window.__SPACEMELON?.cheat.grantAbility(a), ability);
+}
+
+export async function clearLevel(page: Page): Promise<void> {
+  await page.evaluate(() => window.__SPACEMELON?.cheat.clearLevel());
 }
 
 export async function hold(
