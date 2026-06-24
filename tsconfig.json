@@ -18,9 +18,8 @@
     "allowSyntheticDefaultImports": true,
     "useDefineForClassFields": true,
     "types": ["node"],
-    "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": ["./src/*"]
     }
   },
   "include": ["src", "tests", "vite.config.ts", "playwright.config.ts"]
