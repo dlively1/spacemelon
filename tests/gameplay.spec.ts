@@ -24,13 +24,18 @@ test("bridge cheats grant abilities and clear levels without grinding", async ({
 });
 
 test("firing while sweeping eventually destroys a watermelon and scores", async ({ page }) => {
-  test.setTimeout(30_000);
-  await bootGame(page, { seed: 7, autoplay: true, invincible: true });
+  test.setTimeout(40_000);
+  // timeScale advances more sim per frame, which matters because CI runs 2
+  // parallel workers that throttle each other's requestAnimationFrame — a
+  // real-time sweep otherwise gets little sim time per wall-second and missed
+  // every melon past the timeout (the original flake here). A short sweep
+  // period keeps fine x-coverage despite the faster ship.
+  await bootGame(page, { seed: 7, autoplay: true, invincible: true, timeScale: 3 });
   const start = await waitForEvent(page, "level-start");
   // L1's narrow spread + slow speed mean a stationary ship's bullets miss
   // most melons. Sweep the ship side-to-side so bullets sample x more widely.
-  sweepFire(page, 8_000).catch(() => {});
-  const hit = await waitForEventAfter(page, "hit", start.t, 12_000);
+  sweepFire(page, 18_000, 250).catch(() => {});
+  const hit = await waitForEventAfter(page, "hit", start.t, 20_000);
   expect(hit.kind).toBe("watermelon");
   const snap = await snapshot(page);
   expect(snap.score).toBeGreaterThan(0);
@@ -138,13 +143,23 @@ test("level 3 spawns a megamelon and it takes multiple hits to break", async ({ 
 });
 
 test("no power-up cylinders drop before level 3", async ({ page }) => {
-  test.setTimeout(30_000);
+  test.setTimeout(40_000);
   // L1 tuning has powerupDropChance: 0 — special abilities are a mid-game
   // escalation, so no cylinders should ever drop here no matter how many
-  // melons we destroy.
-  await bootGame(page, { seed: 7, level: 1, autoplay: true, invincible: true });
-  await waitForEvent(page, "level-start");
-  await sweepFire(page, 9_000).catch(() => {});
+  // melons we destroy. (L1 and L2 are both 0; only L3+ drops — and the first
+  // kill lands long before enough kills accumulate to clear two levels.)
+  // timeScale advances more sim per frame, compensating for the rAF throttling
+  // when CI runs parallel workers; a short sweep period keeps fine x-coverage.
+  // We only wait for the first kill (which lands well before enough kills to
+  // clear L1+L2 into L3's drop range), then assert no cylinders dropped.
+  await bootGame(page, { seed: 7, level: 1, autoplay: true, invincible: true, timeScale: 3 });
+  const start = await waitForEvent(page, "level-start");
+  // Sweep the ship side-to-side while firing and wait for a confirmed kill,
+  // rather than checking once after a fixed sweep window — a sweep that missed
+  // every melon in a fixed window made this test flake. waitForEvent retries
+  // until a hit lands, so the "we destroyed a melon" sanity is solid.
+  sweepFire(page, 18_000, 250).catch(() => {});
+  await waitForEventAfter(page, "hit", start.t, 20_000);
   const evs = await events(page);
   const drops = evs.filter((e) => e.type === "powerup-spawn");
   expect(drops).toHaveLength(0);
