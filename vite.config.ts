@@ -2,6 +2,10 @@ import { defineConfig } from "vite";
 import { fileURLToPath, URL } from "node:url";
 
 export default defineConfig({
+  // Static-host base path. Defaults to "/" for local dev/preview; the Pages
+  // deploy workflow sets BASE_PATH="/spacemelon/" so built asset URLs resolve
+  // under the project-pages subpath (https://dlively1.github.io/spacemelon/).
+  base: process.env.BASE_PATH ?? "/",
   server: {
     host: true, // bind 0.0.0.0 so dev server is reachable on LAN
     port: 5173,
