@@ -61,7 +61,6 @@ export class GameScene extends Phaser.Scene {
   private starLayers: StarLayer[] = [];
   private bgContainer!: Phaser.GameObjects.Container;
   private input$ = { left: false, right: false, up: false, down: false, fire: false };
-  private prevFireInput = false;
   // Reused per-frame cull buffers — update() must not allocate.
   private escapedBuf: Watermelon[] = [];
   private culledBuf: Watermelon[] = [];
@@ -246,11 +245,7 @@ export class GameScene extends Phaser.Scene {
     const right = this.cursors.right?.isDown || this.keyD.isDown || this.input$.right;
     const up = this.cursors.up?.isDown || this.keyW.isDown;
     const down = this.cursors.down?.isDown || this.keyS.isDown;
-    const fireJustDown =
-      Phaser.Input.Keyboard.JustDown(this.fireKey) ||
-      (this.input$.fire && !this.prevFireInput);
-    this.prevFireInput = this.input$.fire;
-    const firing = fireJustDown;
+    const firing = Phaser.Input.Keyboard.JustDown(this.fireKey) || this.input$.fire;
 
     const body = this.ship.body as Phaser.Physics.Arcade.Body;
     body.setVelocity(0);
