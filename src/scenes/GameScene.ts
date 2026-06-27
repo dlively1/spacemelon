@@ -245,7 +245,7 @@ export class GameScene extends Phaser.Scene {
     const right = this.cursors.right?.isDown || this.keyD.isDown || this.input$.right;
     const up = this.cursors.up?.isDown || this.keyW.isDown;
     const down = this.cursors.down?.isDown || this.keyS.isDown;
-    const firing = this.fireKey.isDown || this.input$.fire;
+    const firing = Phaser.Input.Keyboard.JustDown(this.fireKey) || this.input$.fire;
 
     const body = this.ship.body as Phaser.Physics.Arcade.Body;
     body.setVelocity(0);
