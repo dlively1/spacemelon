@@ -9,9 +9,14 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
   private fireCooldownMs = BASE_FIRE_COOLDOWN_MS;
   private nextFireAt = 0;
   private invincibleUntil = 0;
+  private respawning = false;
+  private readonly spawnX: number;
+  private readonly spawnY: number;
 
   constructor(scene: Phaser.Scene, x: number, y: number) {
     super(scene, x, y, TEX.ship);
+    this.spawnX = x;
+    this.spawnY = y;
     scene.add.existing(this);
     scene.physics.add.existing(this);
     this.setScale(2);
@@ -47,5 +52,41 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
 
   startInvincibility(nowMs: number, durationMs: number): void {
     this.invincibleUntil = nowMs + durationMs;
+  }
+
+  // True while the ship is mid-respawn (visibly "destroyed", before it flashes
+  // back in). Callers should suppress movement/fire during this window.
+  isRespawning(): boolean {
+    return this.respawning;
+  }
+
+  // Arcade "life lost" beat: the ship vanishes (the scene spawns the explosion
+  // FX at its position), then after `hiddenMs` it snaps back to its spawn point
+  // and rapid-blinks for the remainder of the i-frame window before turning
+  // solid + vulnerable again.
+  playHitSequence(nowMs: number, iFrameMs: number, hiddenMs = 400): void {
+    this.respawning = true;
+    this.startInvincibility(nowMs, iFrameMs);
+    this.scene.tweens.killTweensOf(this);
+    (this.body as Phaser.Physics.Arcade.Body).setVelocity(0);
+    this.setVisible(false);
+
+    this.scene.time.delayedCall(hiddenMs, () => {
+      this.setPosition(this.spawnX, this.spawnY);
+      this.setThrust(false);
+      this.setVisible(true).setAlpha(1);
+      this.respawning = false;
+
+      const blinkMs = Math.max(0, iFrameMs - hiddenMs);
+      this.scene.tweens.add({
+        targets: this,
+        alpha: 0.2,
+        duration: 90,
+        yoyo: true,
+        repeat: Math.max(0, Math.round(blinkMs / 180) - 1),
+        ease: "Linear",
+        onComplete: () => this.setAlpha(1),
+      });
+    });
   }
 }
