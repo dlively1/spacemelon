@@ -21,7 +21,7 @@
     "agent:loop": "playwright test --reporter=line"
   },
   "dependencies": {
-    "phaser": "^3.80.1"
+    "phaser": "^4.2.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
