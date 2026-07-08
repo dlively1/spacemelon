@@ -249,14 +249,18 @@ export class GameScene extends Phaser.Scene {
 
     const body = this.ship.body as Phaser.Physics.Arcade.Body;
     body.setVelocity(0);
-    if (left) body.setVelocityX(-this.ship.speed);
-    else if (right) body.setVelocityX(this.ship.speed);
-    if (up) body.setVelocityY(-this.ship.speed * 0.75);
-    else if (down) body.setVelocityY(this.ship.speed * 0.75);
+    // While mid-respawn the ship is hidden — ignore input so the invisible ship
+    // can't drift or fire until it flashes back in.
+    if (!this.ship.isRespawning()) {
+      if (left) body.setVelocityX(-this.ship.speed);
+      else if (right) body.setVelocityX(this.ship.speed);
+      if (up) body.setVelocityY(-this.ship.speed * 0.75);
+      else if (down) body.setVelocityY(this.ship.speed * 0.75);
 
-    this.ship.setThrust(firing || left || right || up || down);
+      this.ship.setThrust(firing || left || right || up || down);
 
-    if (firing && this.ship.tryFire(time)) this.fireBullet();
+      if (firing && this.ship.tryFire(time)) this.fireBullet();
+    }
 
     // Parallax: scroll the star layers + bob the nebula container slightly.
     for (const layer of this.starLayers) {
@@ -532,31 +536,25 @@ export class GameScene extends Phaser.Scene {
   private onShipHitMelon(melon: Watermelon): void {
     if (this.cfg.invincible || this.gameOverActive) return;
     if (this.ship.isInvincible(this.time.now)) return;
-    this.fx.explode(melon.x, melon.y);
+    // The ship itself visibly pops (mega-magnitude burst at its position).
+    this.fx.explode(this.ship.x, this.ship.y, 2);
     melon.despawn();
     this.lives -= 1;
     const bus = getEventBus();
     bus.emit({ type: "lives", t: this.time.now, lives: this.lives });
     bus.updateSnapshot({ lives: this.lives });
     this.gameHud.setLives(this.lives);
-    this.cameras.main.shake(180, 0.01);
+    this.cameras.main.shake(300, 0.018);
     sfx.play("shipHit");
 
-    // Brief invincibility window so a single hit can't immediately cascade.
-    const iFrameMs = 1500;
-    this.ship.startInvincibility(this.time.now, iFrameMs);
-    this.tweens.killTweensOf(this.ship);
-    this.tweens.add({
-      targets: this.ship,
-      alpha: 0.15,
-      duration: 110,
-      yoyo: true,
-      repeat: Math.round(iFrameMs / 220) - 1,
-      ease: "Linear",
-      onComplete: () => this.ship.setAlpha(1),
-    });
+    if (this.lives <= 0) {
+      this.gameOver();
+      return;
+    }
 
-    if (this.lives <= 0) this.gameOver();
+    // Explode → vanish → flash back in at spawn, invincible for the window so a
+    // single hit can't immediately cascade into more.
+    this.ship.playHitSequence(this.time.now, 2000);
   }
 
   private advanceLevel(): void {
